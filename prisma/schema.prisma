@@ -1,0 +1,738 @@
+// Nevatas — Compliance-Grade Payroll-to-401(k) OS
+// See CLAUDE.md section 10 for the high-level data model.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Identity & Access ----------
+
+model User {
+  id                   String    @id @default(cuid())
+  email                String    @unique
+  name                 String?
+  emailVerified        DateTime?
+  image                String?
+  passwordHash         String?
+  passwordChangedAt    DateTime?
+  mfaEnabled           Boolean   @default(false)
+  // Encrypted base32 TOTP secret. Present once enrollment begins; mfaEnabled
+  // is flipped true only after the user verifies a code against this secret.
+  mfaSecretEncrypted   String?
+  mfaEnrolledAt        DateTime?
+  status               String    @default("active") // active | disabled
+  lockedUntil          DateTime? // hard lockout until this time
+  failedLoginCount     Int       @default(0)
+  lastFailedLoginAt    DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  organizations    OrganizationUser[]
+  accounts         Account[]
+  sessions         Session[]
+  mfaRecoveryCodes    MfaRecoveryCode[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+// Single-use recovery codes. Argon2id-hashed; plaintext is shown to the user
+// exactly once at enrollment.
+model MfaRecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// NextAuth.js account/session/verificationToken models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Active or historical admin impersonation. Created by a Platform Super
+// Admin via /api/admin/impersonation/start. While the row is "active"
+// (no endedAt + not past expiresAt) and its id is in the requesting
+// browser's nv_impersonation_id cookie, requireActor() returns an actor
+// whose userId is the targetUserId; every audit event written during the
+// session also stamps adminUserId in the impersonatedBy column so the
+// trail is dual-attributed.
+model ImpersonationSession {
+  id              String    @id @default(cuid())
+  adminUserId     String
+  // The admin's active org at the moment of start, restored on stop so
+  // the admin lands back where they were instead of in the target's org.
+  adminPriorOrgId String?
+  targetUserId    String
+  reason          String
+  startedAt       DateTime  @default(now())
+  expiresAt       DateTime
+  endedAt         DateTime?
+  endedReason     String?
+
+  @@index([adminUserId, startedAt])
+  @@index([targetUserId, startedAt])
+}
+
+// Outstanding user invitation. Created by an inviter with user.invite;
+// accepted via a tokenized public link. Single-use. The raw token is sent
+// in the email; only its sha256 is stored.
+//
+// Uniqueness on (organizationId, emailLower) for live invitations is
+// enforced via a partial unique index in the migration so a re-invite
+// supersedes a stale entry without colliding.
+model Invitation {
+  id               String    @id @default(cuid())
+  organizationId   String
+  emailLower       String
+  roleId           String
+  inviterUserId    String
+  tokenHash        String    @unique
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  acceptedByUserId String?
+  revokedAt        DateTime?
+  revokedByUserId  String?
+  createdAt        DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id])
+
+  @@index([organizationId, emailLower])
+  @@index([organizationId, acceptedAt, revokedAt])
+}
+
+// Single-use password-reset tokens. The raw token is sent to the user via
+// email; only its sha256 hash is persisted so a database leak does not
+// expose pending tokens.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
+// Records every authentication attempt (success and failure) so we can throttle
+// brute force, lock accounts, and produce SOC 2 evidence. Append-only.
+model LoginAttempt {
+  id          String   @id @default(cuid())
+  emailLower  String   // lowercased email; may not match a real user (still log)
+  userId      String?  // populated when the email matched a user, regardless of outcome
+  ipAddress   String?
+  userAgent   String?
+  outcome     String   // "succeeded" | "bad_password" | "unknown_user" | "locked" | "throttled" | "disabled"
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  @@index([emailLower, createdAt])
+  @@index([ipAddress, createdAt])
+  @@index([userId, createdAt])
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users        OrganizationUser[]
+  companies    Company[]
+  auditEvents  AuditEvent[]
+  invitations  Invitation[]
+}
+
+model OrganizationUser {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  roleId         String
+  status         String   @default("active") // active | invited | disabled
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id])
+
+  @@unique([organizationId, userId])
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g. "platform_super_admin", "plan_sponsor_approver"
+  name        String
+  description String?
+
+  permissions RolePermission[]
+  members     OrganizationUser[]
+  invitations Invitation[]
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g. "contribution.approve"
+  description String?
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  id           String @id @default(cuid())
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+// ---------- Plan & Company ----------
+
+model Company {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  einEncrypted   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id])
+  plans        Plan[]
+  participants Participant[]
+  connections  PayrollConnection[]
+  sourceFiles  PayrollSourceFile[]
+  syncJobs     SyncJob[]
+
+  @@index([organizationId])
+}
+
+model Plan {
+  id           String   @id @default(cuid())
+  companyId    String
+  name         String
+  planNumber   String?
+  recordkeeper String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company      Company           @relation(fields: [companyId], references: [id])
+  ruleVersions PlanRuleVersion[]
+  payrollRuns  PayrollRun[]
+
+  @@index([companyId])
+}
+
+// Plan rules are versioned by effective date and never mutated in place.
+model PlanRuleVersion {
+  id            String   @id @default(cuid())
+  planId        String
+  effectiveDate DateTime
+  rulesJson     Json
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@unique([planId, effectiveDate])
+}
+
+model Participant {
+  id                   String   @id @default(cuid())
+  companyId            String
+  externalEmployeeId   String?
+  ssnEncrypted         String?
+  ssnLast4             String?
+  firstName            String
+  lastName             String
+  dateOfBirthEncrypted String?
+  dateOfHire           DateTime?
+  dateOfTermination    DateTime?
+  status               String   @default("active") // active | terminated | rehired
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company       Company               @relation(fields: [companyId], references: [id])
+  contributions PayrollContribution[]
+  loanSchedules LoanSchedule[]
+
+  @@unique([companyId, externalEmployeeId])
+  @@index([companyId, lastName])
+}
+
+// Per-participant 401(k) loan amortization. The validator compares this
+// expected payment amount + frequency against payroll-row loanRepayment
+// values to flag missed or over/underpaid loan repayments.
+model LoanSchedule {
+  id                    String   @id @default(cuid())
+  participantId         String
+  loanNumber            String   // recordkeeper-assigned loan id
+  originationDate       DateTime
+  principalAmount       Decimal  @db.Decimal(18, 2)
+  expectedPaymentAmount Decimal  @db.Decimal(18, 2)
+  paymentFrequency      String   // weekly | biweekly | semimonthly | monthly
+  status                String   @default("active") // active | paid_off | defaulted
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([participantId, loanNumber])
+  @@index([participantId, status])
+}
+
+// ---------- Payroll Integrations ----------
+
+model PayrollConnection {
+  id              String   @id @default(cuid())
+  companyId       String
+  provider        String   // paycor | adp | gusto | paychex | isolved | quickbooks | csv | sftp
+  status          String   @default("inactive") // active | inactive | error | reauth_required
+  encryptedTokens Json?
+  settingsJson    Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, provider])
+}
+
+model SyncJob {
+  id           String    @id @default(cuid())
+  companyId    String
+  planId       String?
+  provider     String
+  status       String    // queued | running | completed | failed | cancelled
+  startedAt    DateTime?
+  completedAt  DateTime?
+  errorCode    String?
+  errorMessage String?
+  metadataJson Json?
+  createdAt    DateTime  @default(now())
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, createdAt])
+}
+
+// ---------- Email ----------
+
+// Every outbound email writes one row. Provides the SOC 2 evidence trail
+// ("did we email this user about X?") plus a queryable history for support
+// triage. Append-only by convention; status updates are limited to the
+// queued → sent / failed transition.
+model EmailMessage {
+  id                 String    @id @default(cuid())
+  organizationId     String?
+  recipientUserId    String?
+  toEmail            String
+  fromEmail          String
+  template           String
+  subject            String
+  templateParamsJson Json?
+  status             String    @default("queued") // queued | sent | failed | bounced
+  providerName       String?
+  providerMessageId String?
+  errorMessage       String?
+  sentAt             DateTime?
+  createdAt          DateTime  @default(now())
+
+  @@index([recipientUserId, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([status, createdAt])
+}
+
+// ---------- Idempotency keys ----------
+
+// Stripe-style request idempotency. Mutating routes accept an Idempotency-Key
+// header; the wrapper looks up (scope, key) and either replays the stored
+// response, returns 409 (a request with the same key is currently in flight),
+// or runs the handler and stores the response. Scope is "userId:METHOD:path"
+// so the same key value can't be used by a different actor or against a
+// different route to poison results.
+model IdempotencyKey {
+  id                  String   @id @default(cuid())
+  scope               String
+  key                 String
+  bodyHash            String   // sha256 of canonical request body
+  status              String   // "in_progress" | "completed"
+  statusCode          Int?
+  responseBodyB64     String?
+  responseHeadersJson Json?
+  createdAt           DateTime @default(now())
+  expiresAt           DateTime
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+}
+
+// ---------- Background jobs ----------
+
+// Postgres-backed job queue. The worker process selects with FOR UPDATE
+// SKIP LOCKED so multiple workers can drain in parallel without blocking
+// each other. A future driver swap (Trigger.dev, Inngest, BullMQ) is hidden
+// behind the JobQueue interface in lib/jobs/.
+model BackgroundJob {
+  id             String    @id @default(cuid())
+  jobType        String
+  payloadJson    Json
+  status         String    @default("queued") // queued | running | succeeded | failed | dead
+  // Optional idempotency key supplied by the enqueuer. When present, a
+  // second enqueue with the same key returns the existing job rather than
+  // creating a duplicate. Enforces "exactly one execution per business
+  // event" semantics across retried HTTP requests.
+  idempotencyKey String?   @unique
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)
+  // The earliest time this job is eligible to run. Updated by the worker on
+  // failure to implement exponential backoff.
+  runAfter       DateTime  @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  errorMessage   String?
+  // Audit-attribution fields. Carried into every audit event the handler
+  // writes so the trail still ties back to the user who triggered the job.
+  organizationId String
+  companyId      String?
+  actorUserId    String?
+  requestId      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status, runAfter])
+  @@index([jobType, status])
+  @@index([organizationId, createdAt])
+}
+
+// ---------- File Ingestion ----------
+
+// Tracks an in-flight direct-browser upload between upload-init (signed URL
+// issued) and upload-complete (server confirmed the object). Single-use.
+model PendingUpload {
+  id             String    @id @default(cuid())
+  organizationId String
+  companyId      String
+  uploadedById   String
+  fileName       String
+  mimeType       String
+  importType     String
+  sizeBytes      Int
+  sha256Hex      String
+  storageKey     String    @unique
+  expiresAt      DateTime
+  status         String    @default("pending") // pending | completed | abandoned | expired
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, status, createdAt])
+  @@index([expiresAt])
+}
+
+model PayrollSourceFile {
+  id              String    @id @default(cuid())
+  companyId       String
+  fileName        String
+  storageKey      String    @unique // path/key in object storage; immutable after upload
+  checksum        String    // sha256 of bytes
+  mimeType        String
+  sizeBytes       Int
+  importType      String    // census | contribution | deferral_election | loan_repayment | payroll_register | eligibility
+  uploadedById    String?
+  status          String    @default("uploaded") // uploaded | parsed | failed
+  parseError      String?
+  // Malware scan lifecycle. New uploads start in "pending" (or "skipped" if
+  // no scanner is configured); parse + downstream actions refuse to proceed
+  // until status is "clean" or an authorized override is recorded.
+  scanStatus      String    @default("pending") // pending | clean | infected | skipped | error
+  scanProvider    String?   // noop | clamav | aws_guardduty
+  scanCompletedAt DateTime?
+  scanResult      Json?     // provider-specific verdict / signature names / scan id
+  scanOverrideById String?
+  scanOverrideReason String?
+  scanOverrideAt   DateTime?
+  createdAt       DateTime  @default(now())
+
+  company    Company             @relation(fields: [companyId], references: [id])
+  mappings   FileColumnMapping[]
+  payrollRuns PayrollRun[]
+  rawRows    SourceRow[]
+
+  @@index([companyId, importType, createdAt])
+  @@index([scanStatus])
+}
+
+// Saved per-file column mapping. Templates can be reused across files.
+model FileColumnMapping {
+  id           String   @id @default(cuid())
+  sourceFileId String
+  templateName String?
+  mappingJson  Json     // { canonical_field: source_header }
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  sourceFile PayrollSourceFile @relation(fields: [sourceFileId], references: [id], onDelete: Cascade)
+}
+
+// Raw source rows preserved verbatim. Never mutated.
+model SourceRow {
+  id           String   @id @default(cuid())
+  sourceFileId String
+  rowIndex     Int
+  rawJson      Json
+  createdAt    DateTime @default(now())
+
+  sourceFile PayrollSourceFile @relation(fields: [sourceFileId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceFileId, rowIndex])
+}
+
+// ---------- Payroll Run / Cycle ----------
+
+model PayrollRun {
+  id                 String   @id @default(cuid())
+  planId             String
+  payrollDate        DateTime
+  payPeriodStart     DateTime?
+  payPeriodEnd       DateTime?
+  status             String   @default("draft") // draft | validated | exception_review | approved | generated | submitted | accepted | rejected | corrected | archived
+  sourceSystem       String   // csv | paycor | adp | ...
+  sourceFileId       String?
+  totalGrossComp     Decimal? @db.Decimal(18, 2)
+  totalContributions Decimal? @db.Decimal(18, 2)
+  validatedAt        DateTime?
+  approvedAt         DateTime?
+  approvedById       String?
+  approvalInvalidatedAt DateTime?
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  plan              Plan                  @relation(fields: [planId], references: [id])
+  sourceFile        PayrollSourceFile?    @relation(fields: [sourceFileId], references: [id])
+  contributions     PayrollContribution[]
+  validationIssues  ValidationIssue[]
+  contributionFiles ContributionFile[]
+  approvals         ApprovalRecord[]
+  correctionCycles  CorrectionCycle[]
+
+  @@index([planId, payrollDate])
+  @@index([status])
+}
+
+model PayrollContribution {
+  id                String   @id @default(cuid())
+  payrollRunId      String
+  participantId     String?
+  externalEmployeeId String?
+  sourceRowId       String?
+  grossCompensation Decimal  @db.Decimal(18, 2)
+  eligibleCompensation Decimal? @db.Decimal(18, 2)
+  preTaxDeferral    Decimal  @db.Decimal(18, 2) @default(0)
+  rothDeferral      Decimal  @db.Decimal(18, 2) @default(0)
+  afterTaxContribution Decimal? @db.Decimal(18, 2)
+  employerMatch     Decimal  @db.Decimal(18, 2) @default(0)
+  safeHarborMatch   Decimal? @db.Decimal(18, 2)
+  safeHarborNonelective Decimal? @db.Decimal(18, 2)
+  profitSharing     Decimal? @db.Decimal(18, 2)
+  loanRepayment     Decimal  @db.Decimal(18, 2) @default(0)
+  rawJson           Json?
+  normalizedJson    Json?
+  transformVersion  String?
+  createdAt         DateTime @default(now())
+
+  payrollRun  PayrollRun   @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  participant Participant? @relation(fields: [participantId], references: [id])
+
+  @@index([payrollRunId])
+  @@index([participantId])
+}
+
+// ---------- Validation & Exceptions ----------
+
+model ValidationIssue {
+  id                    String   @id @default(cuid())
+  payrollRunId          String
+  ruleKey               String   // stable id for the rule that fired
+  severity              String   // info | warning | critical | blocking
+  category              String
+  entityType            String
+  entityId              String?
+  participantId         String?
+  message               String
+  recommendedResolution String?
+  sourceField           String?
+  expectedValue         String?
+  actualValue           String?
+  status                String   @default("open") // open | in_review | awaiting_sponsor | awaiting_payroll_provider | resolved | acknowledged | waived
+  resolutionNote        String?
+  waiverReason          String?
+  resolvedById          String?
+  resolvedAt            DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+
+  @@index([payrollRunId, severity, status])
+  @@index([participantId])
+}
+
+// ---------- Contribution Output & Approval ----------
+
+model ContributionFile {
+  id                String   @id @default(cuid())
+  payrollRunId      String
+  // Set when this file was generated as part of an open correction cycle.
+  // null for the initial file(s) on the original cycle.
+  correctionCycleId String?
+  version           Int
+  status            String   // draft | generated | submitted | accepted | rejected | archived
+  storageKey        String   @unique
+  checksum          String
+  format            String   // recordkeeper template id
+  generatedById     String?
+  approvedById      String?
+  approvedAt        DateTime?
+  submittedAt       DateTime?
+  acceptedAt        DateTime?
+  rejectedAt        DateTime?
+  rejectionReason   String?
+  createdAt         DateTime @default(now())
+
+  payrollRun      PayrollRun       @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  correctionCycle CorrectionCycle? @relation(fields: [correctionCycleId], references: [id])
+
+  @@unique([payrollRunId, version])
+  @@index([correctionCycleId])
+}
+
+// A correction cycle reopens an already-approved (and possibly submitted)
+// payroll run for re-validation, re-generation, and re-approval. The original
+// approval and original contribution file are preserved verbatim; the cycle
+// produces a NEW versioned file linked back to it. CLAUDE.md §8.6 + §10.
+model CorrectionCycle {
+  id           String    @id @default(cuid())
+  payrollRunId String
+  status       String    @default("open") // open | closed | abandoned
+  reason       String
+  // The contribution file that was active at the moment the cycle was opened.
+  // Captured so audits can show "we corrected from version N".
+  supersededFileId String?
+  openedById   String?
+  openedAt     DateTime  @default(now())
+  closedById   String?
+  closedAt     DateTime?
+  closeReason  String?
+
+  payrollRun        PayrollRun         @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  contributionFiles ContributionFile[]
+
+  @@index([payrollRunId, status])
+}
+
+// Sponsor approval is a first-class compliance artifact. Never edited after creation.
+model ApprovalRecord {
+  id                  String   @id @default(cuid())
+  payrollRunId        String
+  contributionFileId  String?
+  approvedById        String
+  certificationText   String
+  totalsSnapshotJson  Json
+  exceptionsAcknowledgedJson Json
+  fileChecksum        String?
+  ipAddress           String?
+  userAgent           String?
+  invalidatedAt       DateTime?
+  invalidationReason  String?
+  createdAt           DateTime @default(now())
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id])
+
+  @@index([payrollRunId, createdAt])
+}
+
+// ---------- Audit ----------
+
+// Append-only. Application code must never UPDATE or DELETE rows here.
+// Enforced at the database layer by triggers in
+// prisma/migrations/20260501000001_audit_log_immutability/migration.sql.
+model AuditEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+  companyId      String?
+  planId         String?
+  actorUserId    String?
+  actorType      String   // user | system | api | job
+  // When the action was performed during an admin-impersonation session,
+  // this is the admin's user id. actorUserId stays the impersonated
+  // (effective) user so existing scoped queries keep working.
+  impersonatedBy String?
+  action         String
+  entityType     String
+  entityId       String?
+  beforeHash     String?
+  afterHash      String?
+  metadataJson   Json?
+  ipAddress      String?
+  userAgent      String?
+  requestId      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@index([impersonatedBy, createdAt])
+}

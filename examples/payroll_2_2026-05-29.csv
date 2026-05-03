@@ -1,0 +1,4 @@
+Employee ID,Last Name,First Name,Pay Date,Total Gross,Pre-Tax Amount,Roth Amount,Loan Repay,Total Employer Match
+1001,Smith,John,05/29/2026,2000.00,100.00,0.00,0.00,60.00
+1002,Doe,Jane,05/29/2026,2500.00,0.00,125.00,50.00,75.00
+1003,Brown,Bob,05/29/2026,1500.00,75.00,0.00,0.00,0.00

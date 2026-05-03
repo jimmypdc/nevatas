@@ -1,0 +1,31 @@
+node_modules
+.next
+out
+dist
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+
+# Local file storage (dev)
+.tmp
+storage/local
+
+# TypeScript / test caches
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+coverage
+
+# Misc
+.cache
