@@ -13,6 +13,7 @@ import type { JobHandler } from "@/lib/jobs/types";
 export const JOB_TYPES = {
   scanFile: "file.scan",
   sendEmail: "email.send",
+  payrollSync: "payroll.sync",
   // Future:
   //   "validation.run", "contribution_file.generate", "writeback.deferral", ...
 } as const;
@@ -28,6 +29,10 @@ export const JOB_PAYLOAD_SCHEMAS = {
   [JOB_TYPES.sendEmail]: z.object({
     emailMessageId: z.string().min(1),
     replyTo: z.string().nullable().optional(),
+  }),
+  [JOB_TYPES.payrollSync]: z.object({
+    connectionId: z.string().min(1),
+    sinceIso: z.string().nullable().optional(),
   }),
 } as const;
 

@@ -33,6 +33,16 @@ const EnvSchema = z.object({
   SECRETS_DRIVER: z.enum(["env", "aws"]).default("env"),
   AWS_SECRETS_PREFIX: z.string().optional(),
 
+  // Paycor integration driver. "mock" returns deterministic test data;
+  // "live" calls the real Paycor API (requires PAYCOR_CLIENT_ID +
+  // PAYCOR_CLIENT_SECRET + PAYCOR_API_BASE_URL — see
+  // lib/integrations/paycor/live-adapter.ts for the wiring checklist).
+  PAYCOR_DRIVER: z.enum(["mock", "live"]).default("mock"),
+  PAYCOR_CLIENT_ID: z.string().optional(),
+  PAYCOR_CLIENT_SECRET: z.string().optional(),
+  PAYCOR_API_BASE_URL: z.string().url().optional(),
+  PAYCOR_AUTH_BASE_URL: z.string().url().optional(),
+
   STORAGE_DRIVER: z.enum(["local", "s3", "r2"]).default("local"),
   STORAGE_LOCAL_DIR: z.string().default("./storage/local"),
   S3_BUCKET: z.string().optional(),

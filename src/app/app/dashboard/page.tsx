@@ -3,8 +3,13 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireActor } from "@/lib/session";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ connected?: string; connect_error?: string; provider?: string }>;
+}) {
   const actor = await requireActor();
+  const sp = (await searchParams) ?? {};
 
   const [companies, recentRuns, pendingApproval, criticalIssues] = await Promise.all([
     db.company.findMany({
@@ -40,6 +45,17 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
+      {sp.connected ? (
+        <div className="rounded-md border border-success/30 bg-success/5 px-4 py-3 text-sm text-success">
+          Connected to <strong className="capitalize">{sp.connected}</strong>. Open the company&apos;s
+          connections page to run a sync.
+        </div>
+      ) : null}
+      {sp.connect_error ? (
+        <div className="rounded-md border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
+          Connection failed{sp.provider ? ` for ${sp.provider}` : ""}: <code className="font-mono text-xs">{sp.connect_error}</code>.
+        </div>
+      ) : null}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Stat label="Companies" value={companies.length.toString()} />
         <Stat label="Pending approval" value={pendingApproval.toString()} />
@@ -80,7 +96,13 @@ export default async function DashboardPage() {
                       </ul>
                     )}
                   </td>
-                  <td className="px-4 py-2 text-right">
+                  <td className="px-4 py-2 text-right whitespace-nowrap">
+                    <Link
+                      href={`/app/companies/${c.id}/connections`}
+                      className="text-xs font-medium text-brand hover:underline mr-3"
+                    >
+                      Connections
+                    </Link>
                     <Link
                       href={`/app/upload?companyId=${c.id}`}
                       className="text-xs font-medium text-brand hover:underline"

@@ -226,6 +226,28 @@ async function main() {
     update: {},
   });
 
+  console.log("Seeding mock Paycor connection on Acme…");
+  // Active mock connection — no real OAuth tokens because PAYCOR_DRIVER=mock
+  // ignores them. Lets the demo run "Sync from Paycor" without going
+  // through the full OAuth dance.
+  const existingConn = await db.payrollConnection.findFirst({
+    where: { companyId: acme.companyId, provider: "paycor" },
+  });
+  if (!existingConn) {
+    await db.payrollConnection.create({
+      data: {
+        companyId: acme.companyId,
+        provider: "paycor",
+        status: "active",
+        settingsJson: {
+          providerAccountId: "PAYCOR-MOCK-ACCT-001",
+          providerCompanyName: "Acme Industries Inc. (Paycor mock)",
+          driver: "mock",
+        },
+      },
+    });
+  }
+
   console.log("\n────────────────────────────────────────────────────────");
   console.log("Seed complete.");
   console.log("\n  Sign in at http://localhost:3000/login as one of:");
@@ -236,6 +258,7 @@ async function main() {
   console.log("    • Demo TPA org, 2 companies, 2 plans");
   console.log("    • 6 Acme participants (1 terminated, 1 hired post-payroll-date for eligibility demos)");
   console.log("    • 1 active loan schedule on E002 ($175/biweekly)");
+  console.log("    • Mock Paycor connection on Acme — POST /api/payroll-connections/<id>/sync");
   console.log("\n  Demo workflow:");
   console.log("    1. Upload examples/contributions-sample.csv at /app/upload (companyId=Acme)");
   console.log("    2. Confirm column mapping → confirm totals → create payroll run");
