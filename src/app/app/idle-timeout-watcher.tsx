@@ -21,12 +21,17 @@ export type IdleTimeoutWatcherProps = {
   warningSeconds: number;
 };
 
-const ACTIVITY_EVENTS: Array<keyof WindowEventMap> = [
+const WINDOW_ACTIVITY_EVENTS: Array<keyof WindowEventMap> = [
   "pointerdown",
   "pointermove",
   "keydown",
   "scroll",
   "touchstart",
+];
+
+// `visibilitychange` is a Document-only event; listen separately so the
+// keyof WindowEventMap typing above stays accurate.
+const DOCUMENT_ACTIVITY_EVENTS: Array<keyof DocumentEventMap> = [
   "visibilitychange",
 ];
 
@@ -69,12 +74,18 @@ export function IdleTimeoutWatcher({ idleTimeoutMinutes, warningSeconds }: IdleT
       setSecondsRemaining((curr) => (curr === null ? curr : null));
     }
 
-    for (const ev of ACTIVITY_EVENTS) {
+    for (const ev of WINDOW_ACTIVITY_EVENTS) {
       window.addEventListener(ev, onActivity, { passive: true });
     }
+    for (const ev of DOCUMENT_ACTIVITY_EVENTS) {
+      document.addEventListener(ev, onActivity, { passive: true });
+    }
     return () => {
-      for (const ev of ACTIVITY_EVENTS) {
+      for (const ev of WINDOW_ACTIVITY_EVENTS) {
         window.removeEventListener(ev, onActivity);
+      }
+      for (const ev of DOCUMENT_ACTIVITY_EVENTS) {
+        document.removeEventListener(ev, onActivity);
       }
     };
   }, []);

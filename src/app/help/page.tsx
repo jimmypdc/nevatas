@@ -11,6 +11,7 @@ const TOC: { id: string; label: string }[] = [
   { id: "quick-start", label: "Quick start" },
   { id: "demo-accounts", label: "Demo accounts" },
   { id: "upload-flow", label: "Upload & validate a payroll" },
+  { id: "integrations", label: "Payroll provider integrations" },
   { id: "approval", label: "Sponsor approval" },
   { id: "corrections", label: "Correction cycles" },
   { id: "plan-rules", label: "Plan rules" },
@@ -94,6 +95,7 @@ export default function HelpPage() {
             <QuickStart />
             <DemoAccounts />
             <UploadFlow />
+            <PayrollIntegrations />
             <Approval />
             <Corrections />
             <PlanRules />
@@ -242,11 +244,12 @@ function QuickStart() {
       <H id="quick-start" number="01" title="Quick start" />
       <P>
         Nevatas connects payroll systems to 401(k) recordkeepers. The
-        canonical workflow is: upload a payroll CSV → confirm the column
-        mapping and totals → resolve any validation issues → generate the
-        recordkeeper-shaped contribution file → sponsor approves → download
-        the audit package. This page documents each step in detail; the
-        sections below also serve as reference for individual operations.
+        canonical workflow is: ingest payroll data (CSV upload OR a
+        connected payroll provider) → confirm the column mapping and totals
+        → resolve any validation issues → generate the recordkeeper-shaped
+        contribution file → sponsor approves → download the audit package.
+        This page documents each step in detail; the sections below also
+        serve as reference for individual operations.
       </P>
       <div className="mt-6">
         <P>
@@ -413,7 +416,154 @@ function UploadFlow() {
 }
 
 /* ────────────────────────────────────────────────────────── */
-/* §04 Approval                                               */
+/* §04 Payroll provider integrations                          */
+/* ────────────────────────────────────────────────────────── */
+
+function PayrollIntegrations() {
+  return (
+    <section>
+      <H
+        id="integrations"
+        number="04"
+        title="Payroll provider integrations"
+        kicker="OAuth-based read-only sync"
+      />
+      <P>
+        As an alternative to CSV upload, Nevatas can pull employees and
+        payroll runs directly from a connected payroll provider. Phase 2
+        ships Paycor as a deterministic mock adapter (no sandbox credentials
+        required) plus a live-adapter scaffold ready for production wiring.
+        ADP, Gusto, Paychex, iSolved, and QuickBooks Payroll are stubbed in
+        the UI for Phase 3.
+      </P>
+
+      <div className="mt-6">
+        <P>
+          Connections live per company at{" "}
+          <strong>/app/companies/&lt;id&gt;/connections</strong>. The page
+          shows three groupings: active connections (with sync history),
+          available providers (Connect button), and inactive connections
+          (audit-trail of past disconnects).
+        </P>
+      </div>
+
+      <h3 className="display text-[20px] font-medium text-ink mt-10 mb-4">
+        Connect flow
+      </h3>
+      <div className="mt-3">
+        <OL>
+          <OLI>
+            Click <strong>Connect</strong> on the Paycor card.{" "}
+            <Code>POST /api/integrations/paycor/connect</Code> creates (or
+            reuses) an inactive <Code>PayrollConnection</Code> row, signs a
+            10-minute HMAC state token carrying the connection id, and 302s
+            to the provider's authorize URL.
+          </OLI>
+          <OLI>
+            With <Code>PAYCOR_DRIVER=mock</Code> (default in dev) the
+            authorize URL points at our own{" "}
+            <Code>/api/integrations/paycor/mock-authorize</Code> route, which
+            immediately bounces back to the callback with a fabricated code.
+            No external trip required.
+          </OLI>
+          <OLI>
+            <Code>/api/integrations/paycor/callback</Code> verifies the
+            state HMAC, refuses cross-session replay (callback session userId
+            must equal state.userId), exchanges the code via{" "}
+            <Code>adapter.connect()</Code>, and persists the access /
+            refresh tokens via field-level{" "}
+            <Code>AES-256-GCM</Code> envelope encryption.
+          </OLI>
+          <OLI>
+            Browser lands back on the dashboard with{" "}
+            <Code>?connected=paycor</Code>. The connection is now active.
+          </OLI>
+        </OL>
+      </div>
+
+      <h3 className="display text-[20px] font-medium text-ink mt-10 mb-4">
+        Sync flow
+      </h3>
+      <P>
+        Click <strong>Sync now</strong> on an active connection.{" "}
+        <Code>POST /api/payroll-connections/&lt;id&gt;/sync</Code> enqueues
+        a <Code>payroll.sync</Code> background job (idempotency-keyed; a
+        repeat click within 5 minutes returns the existing job). The worker
+        runs the orchestrator:
+      </P>
+      <div className="mt-3">
+        <L>
+          <LI>
+            <Code>adapter.getCompany()</Code> →{" "}
+            <Code>adapter.getEmployees()</Code> → upsert{" "}
+            <Code>Participant</Code> rows by{" "}
+            <Code>(companyId, externalEmployeeId)</Code>.
+          </LI>
+          <LI>
+            <Code>adapter.getPayrollRuns(&#123; since &#125;)</Code> → for
+            each new run, <Code>getPayrollRunDetails()</Code>, snapshot the
+            payload as a synthetic JSON{" "}
+            <Code>PayrollSourceFile</Code> + <Code>SourceRow</Code> set, run
+            the validation engine, create a <Code>PayrollRun</Code> in{" "}
+            <Code>validated</Code> or <Code>exception_review</Code>.
+          </LI>
+          <LI>
+            Re-sync is safe: existing runs are matched by{" "}
+            <Code>externalPayrollRunId</Code> and skipped.
+          </LI>
+        </L>
+      </div>
+      <P>
+        The UI polls{" "}
+        <Code>/api/payroll-connections/&lt;id&gt;/sync-status</Code> every
+        1.5s for up to 30s and surfaces the verdict inline (
+        <em>✓ Synced N employees · M new runs</em> or the failure message).
+      </P>
+
+      <h3 className="display text-[20px] font-medium text-ink mt-10 mb-4">
+        Disconnect
+      </h3>
+      <P>
+        <strong>Disconnect</strong> wipes the encrypted token blob, flips
+        status to <Code>inactive</Code>, and writes an audit event. The row
+        itself stays for audit trail; past <Code>SyncJob</Code> rows and
+        every imported <Code>PayrollRun</Code> are preserved verbatim.
+      </P>
+
+      <h3 className="display text-[20px] font-medium text-ink mt-10 mb-4">
+        Mock vs live driver
+      </h3>
+      <div className="mt-3">
+        <L>
+          <LI>
+            <Code>PAYCOR_DRIVER=mock</Code> (default) — uses{" "}
+            <Code>PaycorMockAdapter</Code>: 8 deterministic employees, 3
+            biweekly runs, designed to exercise real validation rules
+            (terminated-with-deferral, employer-match-mismatch, etc.). No
+            credentials required. Hard-gated to{" "}
+            <Code>NODE_ENV !== "production"</Code>.
+          </LI>
+          <LI>
+            <Code>PAYCOR_DRIVER=live</Code> — uses{" "}
+            <Code>PaycorLiveAdapter</Code>. Requires{" "}
+            <Code>PAYCOR_CLIENT_ID</Code>, <Code>PAYCOR_CLIENT_SECRET</Code>,{" "}
+            <Code>PAYCOR_API_BASE_URL</Code>,{" "}
+            <Code>PAYCOR_AUTH_BASE_URL</Code>. The constructor throws on
+            missing config; the connect route surfaces it as a 503.
+          </LI>
+        </L>
+      </div>
+      <Note tone="info">
+        See <Code>src/lib/integrations/paycor/live-adapter.ts</Code> for the
+        8-step wiring checklist. Swapping to live requires no changes
+        outside that file.
+      </Note>
+    </section>
+  );
+}
+
+/* ────────────────────────────────────────────────────────── */
+/* §05 Approval                                               */
 /* ────────────────────────────────────────────────────────── */
 
 function Approval() {
@@ -421,7 +571,7 @@ function Approval() {
     <section>
       <H
         id="approval"
-        number="04"
+        number="05"
         title="Sponsor approval"
         kicker="The signature that holds up"
       />
@@ -464,13 +614,13 @@ function Approval() {
 }
 
 /* ────────────────────────────────────────────────────────── */
-/* §05 Corrections                                            */
+/* §06 Corrections                                            */
 /* ────────────────────────────────────────────────────────── */
 
 function Corrections() {
   return (
     <section>
-      <H id="corrections" number="05" title="Correction cycles" />
+      <H id="corrections" number="06" title="Correction cycles" />
       <P>
         Once a payroll run is approved (or generated, submitted, accepted,
         or rejected), the source data is locked. To fix something — a
@@ -511,13 +661,13 @@ function Corrections() {
 }
 
 /* ────────────────────────────────────────────────────────── */
-/* §06 Plan rules                                             */
+/* §07 Plan rules                                             */
 /* ────────────────────────────────────────────────────────── */
 
 function PlanRules() {
   return (
     <section>
-      <H id="plan-rules" number="06" title="Plan rules" />
+      <H id="plan-rules" number="07" title="Plan rules" />
       <P>
         Plan rules are versioned by effective date and never mutated in
         place. When something changes — match formula, IRS limits for a new
@@ -575,7 +725,7 @@ function PlanRules() {
 }
 
 /* ────────────────────────────────────────────────────────── */
-/* §07 Roles                                                  */
+/* §08 Roles                                                  */
 /* ────────────────────────────────────────────────────────── */
 
 function Roles() {
@@ -591,7 +741,7 @@ function Roles() {
   ];
   return (
     <section>
-      <H id="roles" number="07" title="Roles & permissions" />
+      <H id="roles" number="08" title="Roles & permissions" />
       <P>
         Permissions are checked server-side on every API request. UI hiding
         is for ergonomics only — it never grants access. The full permission
@@ -633,7 +783,7 @@ function Roles() {
 }
 
 /* ────────────────────────────────────────────────────────── */
-/* §08 Validation rules                                       */
+/* §09 Validation rules                                       */
 /* ────────────────────────────────────────────────────────── */
 
 function ValidationRules() {
@@ -672,7 +822,7 @@ function ValidationRules() {
     <section>
       <H
         id="validation-rules"
-        number="08"
+        number="09"
         title="Validation rules"
         kicker={`${rules.length} rules registered`}
       />
@@ -721,13 +871,13 @@ function ValidationRules() {
 }
 
 /* ────────────────────────────────────────────────────────── */
-/* §09 Output formats                                         */
+/* §10 Output formats                                         */
 /* ────────────────────────────────────────────────────────── */
 
 function OutputFormats() {
   return (
     <section>
-      <H id="output-formats" number="09" title="Recordkeeper output" />
+      <H id="output-formats" number="10" title="Recordkeeper output" />
       <P>
         The contribution file's format is selected per plan via{" "}
         <Code>PlanRules.outputFormat</Code>. Three templates ship today:
@@ -760,13 +910,13 @@ function OutputFormats() {
 }
 
 /* ────────────────────────────────────────────────────────── */
-/* §10 Members                                                */
+/* §11 Members                                                */
 /* ────────────────────────────────────────────────────────── */
 
 function Members() {
   return (
     <section>
-      <H id="members" number="10" title="Members & invitations" />
+      <H id="members" number="11" title="Members & invitations" />
       <P>
         Members management lives at <strong>/app/users</strong>. Firm Admins
         and Plan Sponsor Admins can invite teammates by email + role; the
@@ -801,13 +951,13 @@ function Members() {
 }
 
 /* ────────────────────────────────────────────────────────── */
-/* §11 Security / MFA                                         */
+/* §12 Security / MFA                                         */
 /* ────────────────────────────────────────────────────────── */
 
 function Security() {
   return (
     <section>
-      <H id="security" number="11" title="Account security & MFA" />
+      <H id="security" number="12" title="Account security & MFA" />
       <P>
         MFA is required for any role that can approve contributions, manage
         roles, override scan verdicts, or create API keys. Enroll at{" "}
@@ -860,13 +1010,13 @@ function Security() {
 }
 
 /* ────────────────────────────────────────────────────────── */
-/* §12 Audit                                                  */
+/* §13 Audit                                                  */
 /* ────────────────────────────────────────────────────────── */
 
 function AuditExports() {
   return (
     <section>
-      <H id="audit" number="12" title="Audit logs & exports" />
+      <H id="audit" number="13" title="Audit logs & exports" />
       <P>
         Every state-changing operation writes an <Code>AuditEvent</Code>{" "}
         with the actor, timestamp, request ID, and (where applicable) hashes
@@ -907,13 +1057,13 @@ function AuditExports() {
 }
 
 /* ────────────────────────────────────────────────────────── */
-/* §13 Admin tools                                            */
+/* §14 Admin tools                                            */
 /* ────────────────────────────────────────────────────────── */
 
 function AdminTools() {
   return (
     <section>
-      <H id="admin" number="13" title="Admin tools" kicker="Platform Super Admin only" />
+      <H id="admin" number="14" title="Admin tools" kicker="Platform Super Admin only" />
       <P>
         Two operator pages live under <Code>/app/admin/</Code>, gated on the{" "}
         <Code>platform.impersonate</Code> permission (granted only to{" "}
@@ -943,7 +1093,7 @@ function AdminTools() {
 }
 
 /* ────────────────────────────────────────────────────────── */
-/* §14 Troubleshooting                                        */
+/* §15 Troubleshooting                                        */
 /* ────────────────────────────────────────────────────────── */
 
 function Troubleshooting() {
@@ -1052,10 +1202,63 @@ WHERE status = 'running' AND id = '<job-id>';`}</Pre>
         </>
       ),
     },
+    {
+      q: "Sync now times out / never completes",
+      a: (
+        <>
+          The sync endpoint enqueues a <Code>payroll.sync</Code> background
+          job; a separate process drains the queue. Without the worker
+          running, the job sits in <Code>queued</Code> forever and the UI
+          hits its 30-second timeout. Run the worker in a second terminal
+          alongside the dev server:
+          <Pre>npm run worker</Pre>
+          Then click <strong>Sync now</strong> again.
+        </>
+      ),
+    },
+    {
+      q: "Background job stuck queued — runAfter is in the past but worker won't claim",
+      a: (
+        <>
+          Postgres column timezone bug. The <Code>BackgroundJob.runAfter</Code>{" "}
+          column is <Code>timestamp without time zone</Code>; if the database
+          session timezone isn't UTC, Prisma's UTC writes are read back as
+          local time, putting freshly-enqueued jobs hours into the future.
+          One-time fix:
+          <Pre>{`-- Run once against your Postgres database
+ALTER DATABASE nevatas SET TIMEZONE = 'UTC';
+-- Then restart the dev server and worker so they reconnect.`}</Pre>
+          The change applies to new connections only — currently-open
+          sessions still see the old timezone.
+        </>
+      ),
+    },
+    {
+      q: "404 on /api/integrations/<provider>/connect or /mock-authorize",
+      a: (
+        <>
+          Two common causes:
+          <span className="block mt-2"><strong>(1)</strong> The dev server
+          isn't running on the port you're hitting. Some other Next.js app
+          may have grabbed port 3000 — check the title in the 404 response
+          to confirm. The Nevatas dev server's terminal logs the actual
+          port. Either stop the other process or update <Code>APP_URL</Code>{" "}
+          to match the port Nevatas is actually serving on (and restart so
+          the OAuth state encodes the correct redirect_uri).</span>
+          <span className="block mt-2"><strong>(2)</strong> Cached route
+          manifest. After adding new routes under a dynamic segment, the
+          dev server occasionally fails to discover them. Stop the dev
+          server, delete <Code>.next/</Code>, and restart:
+          <Pre>{`Remove-Item -Recurse -Force .next   # PowerShell
+# or: rm -rf .next                  # bash
+npm run dev`}</Pre></span>
+        </>
+      ),
+    },
   ];
   return (
     <section>
-      <H id="troubleshooting" number="14" title="Troubleshooting" />
+      <H id="troubleshooting" number="15" title="Troubleshooting" />
       <ol className="space-y-7 mt-6">
         {items.map((it, i) => (
           <li key={i} className="border-l-2 border-ink/15 pl-5">
@@ -1076,7 +1279,7 @@ WHERE status = 'running' AND id = '<job-id>';`}</Pre>
 }
 
 /* ────────────────────────────────────────────────────────── */
-/* §15 Contact                                                */
+/* §16 Contact                                                */
 /* ────────────────────────────────────────────────────────── */
 
 function Contact() {
@@ -1088,7 +1291,7 @@ function Contact() {
   ];
   return (
     <section>
-      <H id="contact" number="15" title="Get help" />
+      <H id="contact" number="16" title="Get help" />
       <P>
         We answer in business hours, normally within a few hours. For
         production incidents, mark your subject line with{" "}

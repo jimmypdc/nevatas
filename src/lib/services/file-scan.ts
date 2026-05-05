@@ -113,7 +113,7 @@ export async function overrideScanVerdict(input: OverrideScanInput) {
   }
   const file = await db.payrollSourceFile.findUnique({
     where: { id: input.sourceFileId },
-    select: { id: true, companyId: true, scanStatus: true },
+    select: { id: true, companyId: true, scanStatus: true, scanOverrideAt: true },
   });
   if (!file || file.companyId !== input.companyId) throw notFound("Source file");
   if (file.scanStatus === "clean" || file.scanStatus === "skipped") {

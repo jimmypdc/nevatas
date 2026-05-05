@@ -16,21 +16,21 @@ model User {
   id                   String    @id @default(cuid())
   email                String    @unique
   name                 String?
-  emailVerified        DateTime?
+  emailVerified        DateTime? @db.Timestamptz(3)
   image                String?
   passwordHash         String?
-  passwordChangedAt    DateTime?
+  passwordChangedAt    DateTime? @db.Timestamptz(3)
   mfaEnabled           Boolean   @default(false)
   // Encrypted base32 TOTP secret. Present once enrollment begins; mfaEnabled
   // is flipped true only after the user verifies a code against this secret.
   mfaSecretEncrypted   String?
-  mfaEnrolledAt        DateTime?
+  mfaEnrolledAt        DateTime? @db.Timestamptz(3)
   status               String    @default("active") // active | disabled
-  lockedUntil          DateTime? // hard lockout until this time
+  lockedUntil          DateTime? @db.Timestamptz(3) // hard lockout until this time
   failedLoginCount     Int       @default(0)
-  lastFailedLoginAt    DateTime?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  lastFailedLoginAt    DateTime? @db.Timestamptz(3)
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
 
   organizations    OrganizationUser[]
   accounts         Account[]
@@ -45,8 +45,8 @@ model MfaRecoveryCode {
   id        String    @id @default(cuid())
   userId    String
   codeHash  String
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
+  usedAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -77,14 +77,14 @@ model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique
   userId       String
-  expires      DateTime
+  expires      DateTime @db.Timestamptz(3)
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model VerificationToken {
   identifier String
   token      String   @unique
-  expires    DateTime
+  expires    DateTime @db.Timestamptz(3)
 
   @@unique([identifier, token])
 }
@@ -104,9 +104,9 @@ model ImpersonationSession {
   adminPriorOrgId String?
   targetUserId    String
   reason          String
-  startedAt       DateTime  @default(now())
-  expiresAt       DateTime
-  endedAt         DateTime?
+  startedAt       DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt       DateTime @db.Timestamptz(3)
+  endedAt         DateTime? @db.Timestamptz(3)
   endedReason     String?
 
   @@index([adminUserId, startedAt])
@@ -127,12 +127,12 @@ model Invitation {
   roleId           String
   inviterUserId    String
   tokenHash        String    @unique
-  expiresAt        DateTime
-  acceptedAt       DateTime?
+  expiresAt        DateTime @db.Timestamptz(3)
+  acceptedAt       DateTime? @db.Timestamptz(3)
   acceptedByUserId String?
-  revokedAt        DateTime?
+  revokedAt        DateTime? @db.Timestamptz(3)
   revokedByUserId  String?
-  createdAt        DateTime  @default(now())
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   role         Role         @relation(fields: [roleId], references: [id])
@@ -148,11 +148,11 @@ model PasswordResetToken {
   id        String    @id @default(cuid())
   userId    String
   tokenHash String    @unique
-  expiresAt DateTime
-  usedAt    DateTime?
+  expiresAt DateTime @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
   ipAddress String?
   userAgent String?
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -170,7 +170,7 @@ model LoginAttempt {
   userAgent   String?
   outcome     String   // "succeeded" | "bad_password" | "unknown_user" | "locked" | "throttled" | "disabled"
   reason      String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([emailLower, createdAt])
   @@index([ipAddress, createdAt])
@@ -181,8 +181,8 @@ model Organization {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   users        OrganizationUser[]
   companies    Company[]
@@ -196,8 +196,8 @@ model OrganizationUser {
   userId         String
   roleId         String
   status         String   @default("active") // active | invited | disabled
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -243,8 +243,8 @@ model Company {
   organizationId String
   name           String
   einEncrypted   String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 
   organization Organization        @relation(fields: [organizationId], references: [id])
   plans        Plan[]
@@ -262,8 +262,8 @@ model Plan {
   name         String
   planNumber   String?
   recordkeeper String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
 
   company      Company           @relation(fields: [companyId], references: [id])
   ruleVersions PlanRuleVersion[]
@@ -276,10 +276,10 @@ model Plan {
 model PlanRuleVersion {
   id            String   @id @default(cuid())
   planId        String
-  effectiveDate DateTime
+  effectiveDate DateTime @db.Timestamptz(3)
   rulesJson     Json
   createdById   String?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
 
   plan Plan @relation(fields: [planId], references: [id])
 
@@ -295,11 +295,11 @@ model Participant {
   firstName            String
   lastName             String
   dateOfBirthEncrypted String?
-  dateOfHire           DateTime?
-  dateOfTermination    DateTime?
+  dateOfHire           DateTime? @db.Timestamptz(3)
+  dateOfTermination    DateTime? @db.Timestamptz(3)
   status               String   @default("active") // active | terminated | rehired
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
 
   company       Company               @relation(fields: [companyId], references: [id])
   contributions PayrollContribution[]
@@ -316,13 +316,13 @@ model LoanSchedule {
   id                    String   @id @default(cuid())
   participantId         String
   loanNumber            String   // recordkeeper-assigned loan id
-  originationDate       DateTime
+  originationDate       DateTime @db.Timestamptz(3)
   principalAmount       Decimal  @db.Decimal(18, 2)
   expectedPaymentAmount Decimal  @db.Decimal(18, 2)
   paymentFrequency      String   // weekly | biweekly | semimonthly | monthly
   status                String   @default("active") // active | paid_off | defaulted
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @db.Timestamptz(3)
 
   participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
@@ -339,8 +339,8 @@ model PayrollConnection {
   status          String   @default("inactive") // active | inactive | error | reauth_required
   encryptedTokens Json?
   settingsJson    Json?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
 
   company Company @relation(fields: [companyId], references: [id])
 
@@ -353,12 +353,12 @@ model SyncJob {
   planId       String?
   provider     String
   status       String    // queued | running | completed | failed | cancelled
-  startedAt    DateTime?
-  completedAt  DateTime?
+  startedAt    DateTime? @db.Timestamptz(3)
+  completedAt  DateTime? @db.Timestamptz(3)
   errorCode    String?
   errorMessage String?
   metadataJson Json?
-  createdAt    DateTime  @default(now())
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
 
   company Company @relation(fields: [companyId], references: [id])
 
@@ -384,8 +384,8 @@ model EmailMessage {
   providerName       String?
   providerMessageId String?
   errorMessage       String?
-  sentAt             DateTime?
-  createdAt          DateTime  @default(now())
+  sentAt             DateTime? @db.Timestamptz(3)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([recipientUserId, createdAt])
   @@index([organizationId, createdAt])
@@ -409,8 +409,8 @@ model IdempotencyKey {
   statusCode          Int?
   responseBodyB64     String?
   responseHeadersJson Json?
-  createdAt           DateTime @default(now())
-  expiresAt           DateTime
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt           DateTime @db.Timestamptz(3)
 
   @@unique([scope, key])
   @@index([expiresAt])
@@ -436,9 +436,9 @@ model BackgroundJob {
   maxAttempts    Int       @default(5)
   // The earliest time this job is eligible to run. Updated by the worker on
   // failure to implement exponential backoff.
-  runAfter       DateTime  @default(now())
-  startedAt      DateTime?
-  completedAt    DateTime?
+  runAfter       DateTime @default(now()) @db.Timestamptz(3)
+  startedAt      DateTime? @db.Timestamptz(3)
+  completedAt    DateTime? @db.Timestamptz(3)
   errorMessage   String?
   // Audit-attribution fields. Carried into every audit event the handler
   // writes so the trail still ties back to the user who triggered the job.
@@ -446,8 +446,8 @@ model BackgroundJob {
   companyId      String?
   actorUserId    String?
   requestId      String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 
   @@index([status, runAfter])
   @@index([jobType, status])
@@ -469,10 +469,10 @@ model PendingUpload {
   sizeBytes      Int
   sha256Hex      String
   storageKey     String    @unique
-  expiresAt      DateTime
+  expiresAt      DateTime @db.Timestamptz(3)
   status         String    @default("pending") // pending | completed | abandoned | expired
-  completedAt    DateTime?
-  createdAt      DateTime  @default(now())
+  completedAt    DateTime? @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([organizationId, status, createdAt])
   @@index([expiresAt])
@@ -495,12 +495,12 @@ model PayrollSourceFile {
   // until status is "clean" or an authorized override is recorded.
   scanStatus      String    @default("pending") // pending | clean | infected | skipped | error
   scanProvider    String?   // noop | clamav | aws_guardduty
-  scanCompletedAt DateTime?
+  scanCompletedAt DateTime? @db.Timestamptz(3)
   scanResult      Json?     // provider-specific verdict / signature names / scan id
   scanOverrideById String?
   scanOverrideReason String?
-  scanOverrideAt   DateTime?
-  createdAt       DateTime  @default(now())
+  scanOverrideAt   DateTime? @db.Timestamptz(3)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
 
   company    Company             @relation(fields: [companyId], references: [id])
   mappings   FileColumnMapping[]
@@ -518,7 +518,7 @@ model FileColumnMapping {
   templateName String?
   mappingJson  Json     // { canonical_field: source_header }
   createdById  String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
 
   sourceFile PayrollSourceFile @relation(fields: [sourceFileId], references: [id], onDelete: Cascade)
 }
@@ -529,7 +529,7 @@ model SourceRow {
   sourceFileId String
   rowIndex     Int
   rawJson      Json
-  createdAt    DateTime @default(now())
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
 
   sourceFile PayrollSourceFile @relation(fields: [sourceFileId], references: [id], onDelete: Cascade)
 
@@ -541,21 +541,21 @@ model SourceRow {
 model PayrollRun {
   id                 String   @id @default(cuid())
   planId             String
-  payrollDate        DateTime
-  payPeriodStart     DateTime?
-  payPeriodEnd       DateTime?
+  payrollDate        DateTime @db.Timestamptz(3)
+  payPeriodStart     DateTime? @db.Timestamptz(3)
+  payPeriodEnd       DateTime? @db.Timestamptz(3)
   status             String   @default("draft") // draft | validated | exception_review | approved | generated | submitted | accepted | rejected | corrected | archived
   sourceSystem       String   // csv | paycor | adp | ...
   sourceFileId       String?
   totalGrossComp     Decimal? @db.Decimal(18, 2)
   totalContributions Decimal? @db.Decimal(18, 2)
-  validatedAt        DateTime?
-  approvedAt         DateTime?
+  validatedAt        DateTime? @db.Timestamptz(3)
+  approvedAt         DateTime? @db.Timestamptz(3)
   approvedById       String?
-  approvalInvalidatedAt DateTime?
+  approvalInvalidatedAt DateTime? @db.Timestamptz(3)
   createdById        String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
 
   plan              Plan                  @relation(fields: [planId], references: [id])
   sourceFile        PayrollSourceFile?    @relation(fields: [sourceFileId], references: [id])
@@ -588,7 +588,7 @@ model PayrollContribution {
   rawJson           Json?
   normalizedJson    Json?
   transformVersion  String?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
 
   payrollRun  PayrollRun   @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
   participant Participant? @relation(fields: [participantId], references: [id])
@@ -617,9 +617,9 @@ model ValidationIssue {
   resolutionNote        String?
   waiverReason          String?
   resolvedById          String?
-  resolvedAt            DateTime?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  resolvedAt            DateTime? @db.Timestamptz(3)
+  createdAt             DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @db.Timestamptz(3)
 
   payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
 
@@ -642,12 +642,12 @@ model ContributionFile {
   format            String   // recordkeeper template id
   generatedById     String?
   approvedById      String?
-  approvedAt        DateTime?
-  submittedAt       DateTime?
-  acceptedAt        DateTime?
-  rejectedAt        DateTime?
+  approvedAt        DateTime? @db.Timestamptz(3)
+  submittedAt       DateTime? @db.Timestamptz(3)
+  acceptedAt        DateTime? @db.Timestamptz(3)
+  rejectedAt        DateTime? @db.Timestamptz(3)
   rejectionReason   String?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
 
   payrollRun      PayrollRun       @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
   correctionCycle CorrectionCycle? @relation(fields: [correctionCycleId], references: [id])
@@ -669,9 +669,9 @@ model CorrectionCycle {
   // Captured so audits can show "we corrected from version N".
   supersededFileId String?
   openedById   String?
-  openedAt     DateTime  @default(now())
+  openedAt     DateTime @default(now()) @db.Timestamptz(3)
   closedById   String?
-  closedAt     DateTime?
+  closedAt     DateTime? @db.Timestamptz(3)
   closeReason  String?
 
   payrollRun        PayrollRun         @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
@@ -692,9 +692,9 @@ model ApprovalRecord {
   fileChecksum        String?
   ipAddress           String?
   userAgent           String?
-  invalidatedAt       DateTime?
+  invalidatedAt       DateTime? @db.Timestamptz(3)
   invalidationReason  String?
-  createdAt           DateTime @default(now())
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
 
   payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id])
 
@@ -726,7 +726,7 @@ model AuditEvent {
   ipAddress      String?
   userAgent      String?
   requestId      String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
 
   organization Organization @relation(fields: [organizationId], references: [id])
 

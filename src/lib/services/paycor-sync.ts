@@ -493,7 +493,6 @@ async function createPayrollRunFromAdapterDetail(params: {
         payrollRunId: run.id,
         participantId: params.empIdByExt.get(c.externalEmployeeId) ?? null,
         externalEmployeeId: c.externalEmployeeId,
-        sourceRecordId: c.sourceRecordId ?? null,
         grossCompensation: new Prisma.Decimal(c.grossCompensation.toFixed(2)),
         eligibleCompensation:
           c.eligibleCompensation === undefined
