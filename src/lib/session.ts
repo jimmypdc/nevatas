@@ -4,6 +4,7 @@
 import { cookies } from "next/headers";
 
 import { auth } from "@/lib/auth";
+import { setAuditContext } from "@/lib/audit/context";
 import { db } from "@/lib/db";
 import { unauthenticated, forbidden } from "@/lib/errors";
 import { loadActor, type ActorContext } from "@/lib/rbac/check";
@@ -69,9 +70,15 @@ export async function requireActor(): Promise<ActorContext> {
     orgId = first.organizationId;
   }
 
-  return loadActor({
+  const actor = await loadActor({
     userId: effectiveUserId,
     organizationId: orgId,
     impersonatedBy: imp?.adminUserId,
   });
+
+  // Bind the audit context so writeAudit() calls anywhere in the request
+  // chain auto-stamp impersonatedBy without each call site having to pass it.
+  setAuditContext({ impersonatedBy: actor.impersonatedBy });
+
+  return actor;
 }

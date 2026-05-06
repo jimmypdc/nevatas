@@ -6,6 +6,7 @@
 
 import type { Prisma, PrismaClient } from "@prisma/client";
 
+import { getAuditContext } from "@/lib/audit/context";
 import { db } from "@/lib/db";
 import { hashSnapshot } from "@/lib/crypto/hashing";
 
@@ -104,9 +105,14 @@ export type AuditWriteInput = {
   // Set when the action was performed during admin impersonation. The audit
   // event keeps actorUserId as the impersonated (effective) user — so
   // existing org-scoped queries still attribute correctly — and adds the
-  // admin's user id here for dual-attribution. Callers normally don't set
-  // this directly; lib/services/impersonation/with-actor.ts populates it
-  // from the request's nv_impersonation_id cookie.
+  // admin's user id here for dual-attribution.
+  //
+  // Callers normally don't set this directly: requireActor() binds the
+  // impersonatedBy via lib/audit/context (AsyncLocalStorage) and writeAudit
+  // pulls from there automatically. Pass it explicitly only when the audit
+  // event is written outside a requireActor()-rooted async chain (e.g., the
+  // impersonation start/stop endpoints themselves, where the admin id is
+  // known but the request hasn't yet set up the context).
   impersonatedBy?: string;
   action: AuditAction;
   entityType: string;
@@ -124,6 +130,10 @@ type Tx = PrismaClient | Prisma.TransactionClient;
 // Write a single audit event. Pass a Prisma transaction client to keep the
 // event in the same transaction as the underlying mutation.
 export async function writeAudit(input: AuditWriteInput, tx: Tx = db): Promise<void> {
+  // Auto-stamp impersonatedBy from the per-request audit context unless the
+  // caller passed an explicit value (impersonation start/stop endpoints do).
+  const impersonatedBy = input.impersonatedBy ?? getAuditContext()?.impersonatedBy;
+
   await tx.auditEvent.create({
     data: {
       organizationId: input.organizationId,
@@ -131,7 +141,7 @@ export async function writeAudit(input: AuditWriteInput, tx: Tx = db): Promise<v
       planId: input.planId,
       actorUserId: input.actorUserId,
       actorType: input.actorType ?? (input.actorUserId ? "user" : "system"),
-      impersonatedBy: input.impersonatedBy,
+      impersonatedBy,
       action: input.action,
       entityType: input.entityType,
       entityId: input.entityId,
