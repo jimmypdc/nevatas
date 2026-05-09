@@ -216,6 +216,68 @@ describe("validation engine", () => {
     }
   });
 
+  it("freezes timeliness elapsed-days at the recorded fundedAt date", () => {
+    vi.useFakeTimers();
+    try {
+      // "Now" is 60 calendar days past payroll — would otherwise produce a
+      // critical late-deposit issue under the general 15-business-day rule.
+      vi.setSystemTime(new Date("2026-06-12T00:00:00Z"));
+
+      // But fundedAt is 6 business days after payroll — above warning (5)
+      // but below critical (15). The validator must measure to fundedAt,
+      // not to "now".
+      const result = runValidators(
+        ctx([row({})], {
+          payrollDate: new Date("2026-04-13T00:00:00Z"),
+          fundedAt: new Date("2026-04-21T00:00:00Z"),
+        }),
+      );
+      const t = result.issues.find((i) => i.ruleKey === "payroll_timeliness.late_deposit_risk");
+      expect(t?.severity).toBe("warning");
+      expect(t?.message).toContain("recorded funding date (2026-04-21)");
+      expect(t?.actualValue).toBe("6 business days");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears timeliness when fundedAt is within the warning window", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-06-12T00:00:00Z")); // long past payroll
+      const result = runValidators(
+        ctx([row({})], {
+          payrollDate: new Date("2026-04-13T00:00:00Z"),
+          // 2 business days from payroll → below warning (5) → no issue.
+          fundedAt: new Date("2026-04-15T00:00:00Z"),
+        }),
+      );
+      expect(
+        result.issues.find((i) => i.ruleKey === "payroll_timeliness.late_deposit_risk"),
+      ).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to today when fundedAt is undefined", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-04-22T00:00:00Z")); // 7 business days post payroll
+      const result = runValidators(
+        ctx([row({})], {
+          payrollDate: new Date("2026-04-13T00:00:00Z"),
+          // fundedAt: undefined — funding not yet recorded.
+        }),
+      );
+      const t = result.issues.find((i) => i.ruleKey === "payroll_timeliness.late_deposit_risk");
+      expect(t?.message).toContain("from payroll date to today");
+      expect(t?.actualValue).toBe("7 business days");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("flags small-plan safe harbor misapplied to a >=100 participant plan", () => {
     vi.useFakeTimers();
     try {

@@ -77,6 +77,8 @@ export const AUDIT_ACTIONS = {
   sponsorApprovalRecorded: "contribution.approval.recorded",
   approvalInvalidated: "contribution.approval.invalidated",
   contributionFileSubmitted: "contribution_file.submitted",
+  contributionFileFundingRecorded: "contribution_file.funding.recorded",
+  validationIssueAutoResolvedByFunding: "validation.issue.auto_resolved_by_funding",
 
   // Correction cycle
   correctionCycleOpened: "correction_cycle.opened",

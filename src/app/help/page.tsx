@@ -806,7 +806,7 @@ function ValidationRules() {
     { key: "compensation.eligible_missing_when_required", sev: "WARNING", cat: "compensation", desc: "Plan requires eligible comp but row didn't provide it." },
     { key: "compensation.eligible_ratio_drift", sev: "WARNING", cat: "compensation", desc: "Eligible/gross ratio below plan minimum — possible exclusion-list change." },
     { key: "approval_readiness.totals_reconcile", sev: "BLOCKING", cat: "approval_readiness", desc: "Header totals must equal line-item sums within $0.01." },
-    { key: "payroll_timeliness.late_deposit_risk", sev: "WARN/CRITICAL", cat: "payroll_timeliness", desc: "Elapsed business days exceed plan threshold." },
+    { key: "payroll_timeliness.late_deposit_risk", sev: "WARN/CRITICAL", cat: "payroll_timeliness", desc: "Elapsed business days exceed plan threshold. Frozen at fundedAt when funding has been recorded; otherwise measured to today." },
     { key: "payroll_timeliness.small_plan_safe_harbor_misapplied", sev: "WARNING", cat: "payroll_timeliness", desc: "Small-plan SH configured on a plan with ≥ 100 participants." },
     { key: "census_payroll.active_employee_missing_from_payroll", sev: "INFO", cat: "eligibility", desc: "Active participant missing from this run." },
   ];

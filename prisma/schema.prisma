@@ -647,6 +647,14 @@ model ContributionFile {
   acceptedAt        DateTime? @db.Timestamptz(3)
   rejectedAt        DateTime? @db.Timestamptz(3)
   rejectionReason   String?
+  // The date contributions actually landed in the plan trust account. This
+  // is the reference the timeliness validator measures against — distinct
+  // from acceptedAt (recordkeeper acknowledged the file) because ACH-based
+  // funding can lag acknowledgment by 1-3 business days. Recorded by an
+  // operator confirming the deposit; null while the deposit is still in
+  // flight or the file was never submitted.
+  fundedAt          DateTime? @db.Timestamptz(3)
+  fundedById        String?
   createdAt         DateTime @default(now()) @db.Timestamptz(3)
 
   payrollRun      PayrollRun       @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
@@ -654,6 +662,7 @@ model ContributionFile {
 
   @@unique([payrollRunId, version])
   @@index([correctionCycleId])
+  @@index([payrollRunId, fundedAt])
 }
 
 // A correction cycle reopens an already-approved (and possibly submitted)

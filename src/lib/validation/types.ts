@@ -135,6 +135,12 @@ export type ValidationContext = {
   // Active loan schedules for the plan, keyed off externalEmployeeId for
   // matching against contribution rows.
   loanSchedules?: LoanScheduleSnapshot[];
+  // Date contributions actually landed in the plan trust account, sourced
+  // from ContributionFile.fundedAt for the run's latest active file. When
+  // set, the timeliness validator measures payrollDate -> fundedAt and
+  // freezes the result; when undefined (still in flight), it measures
+  // payrollDate -> now() so the issue updates as the run ages.
+  fundedAt?: Date;
 };
 
 export type Validator = {
