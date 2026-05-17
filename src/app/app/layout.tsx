@@ -71,6 +71,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
                 <>
                   <Link href="/app/admin/impersonate" className="hover:text-ink">Impersonate</Link>
                   <Link href="/app/admin/health" className="hover:text-ink">Health</Link>
+                  <Link href="/app/admin/evidence" className="hover:text-ink">Evidence</Link>
                 </>
               ) : null}
               <a

@@ -303,7 +303,7 @@ function DemoAccounts() {
       email: "platform@demo.local",
       pw: "nevatas-platform-2026!",
       role: "Platform Super Admin",
-      can: "Everything above PLUS impersonate users (/app/admin/impersonate), view system health (/app/admin/health)",
+      can: "Everything above PLUS impersonate users (/app/admin/impersonate), view system health (/app/admin/health), view SOC 2 evidence center (/app/admin/evidence)",
     },
   ];
   return (
@@ -1065,7 +1065,7 @@ function AdminTools() {
     <section>
       <H id="admin" number="14" title="Admin tools" kicker="Platform Super Admin only" />
       <P>
-        Two operator pages live under <Code>/app/admin/</Code>, gated on the{" "}
+        Three operator pages live under <Code>/app/admin/</Code>, gated on the{" "}
         <Code>platform.impersonate</Code> permission (granted only to{" "}
         Platform Super Admin in the seed).
       </P>
@@ -1085,6 +1085,17 @@ function AdminTools() {
             invite) are stripped during impersonation. Every action is
             dual-attributed in the audit log. Cannot impersonate other
             platform admins.
+          </LI>
+          <LI>
+            <strong>/app/admin/evidence</strong> — SOC 2 evidence center.
+            Snapshot tiles (audit-event volume, failed logins, active
+            impersonations, dead jobs, MFA enrollment, open critical
+            issues), recent admin actions, authentication evidence (login
+            outcomes + top failing IPs), platform-wide access review (every
+            active membership with role + MFA + last login), every sponsor
+            approval with its certification text and IP/UA, job queue
+            health, recent impersonation sessions. Read-only; all data is
+            live from existing audit / security tables.
           </LI>
         </L>
       </div>
