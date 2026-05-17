@@ -75,11 +75,21 @@ export async function recordFunding(
   if (input.fundedAt.getTime() < file.payrollRun.payrollDate.getTime()) {
     throw validationError("fundedAt cannot be earlier than the payroll date");
   }
-  // A file that was never sent shouldn't be marked as funded — that would
-  // produce a paper trail asserting money moved against a draft document.
-  if (file.status === "draft" || file.status === "generated") {
+  // A file that was never sponsor-approved shouldn't be marked as funded —
+  // that would produce a paper trail asserting money moved against an
+  // unauthorized document. Files in "generated" state with an approvedAt
+  // timestamp are acceptable because in the demo / current build the
+  // submit/accept lifecycle isn't yet UI-wired; sponsor approval is the
+  // strongest authorization signal available.
+  if (file.status === "draft") {
     throw blockedByPolicy(
-      "Cannot record funding on a contribution file that has not been submitted",
+      "Cannot record funding on a draft contribution file",
+      { currentStatus: file.status },
+    );
+  }
+  if (file.status === "generated" && !file.approvedAt) {
+    throw blockedByPolicy(
+      "Cannot record funding on a contribution file that has not been sponsor-approved",
       { currentStatus: file.status },
     );
   }

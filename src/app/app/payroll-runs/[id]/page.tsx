@@ -4,7 +4,13 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireActor } from "@/lib/session";
 
-import { ApproveAction, GenerateAction, IssueAction, OpenCorrectionAction } from "./run-actions";
+import {
+  ApproveAction,
+  GenerateAction,
+  IssueAction,
+  OpenCorrectionAction,
+  RecordFundingAction,
+} from "./run-actions";
 import { FilePreview } from "./file-preview";
 
 export default async function PayrollRunPage({
@@ -35,6 +41,8 @@ export default async function PayrollRunPage({
   const canGenerate = blocking.length === 0 && actor.permissions.has("contribution.generate");
   const latestFile = run.contributionFiles[0] ?? null;
   const canApprove = latestFile && blocking.length === 0 && actor.permissions.has("contribution.approve");
+  const canRecordFunding = actor.permissions.has("contribution.submit");
+  const payrollDateIso = run.payrollDate.toISOString().slice(0, 10);
 
   const CORRECTABLE_STATUSES = new Set(["approved", "generated", "submitted", "accepted", "rejected"]);
   const openCycle = run.correctionCycles.find((c) => c.status === "open") ?? null;
@@ -192,29 +200,52 @@ export default async function PayrollRunPage({
             <p className="text-sm text-subtle">No contribution file generated yet.</p>
           ) : (
             <ul className="space-y-2 text-sm">
-              {run.contributionFiles.map((f) => (
-                <li key={f.id} className="space-y-2 border-b border-border pb-2 last:border-0 last:pb-0">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="font-medium">v{f.version} · <span className="font-mono text-xs">{f.format}</span></div>
-                      <div className="font-mono text-xs text-subtle">sha256:{f.checksum.slice(0, 16)}…</div>
+              {run.contributionFiles.map((f) => {
+                const fundingEligible =
+                  canRecordFunding &&
+                  f.status !== "draft" &&
+                  f.status !== "rejected" &&
+                  (f.status !== "generated" || f.approvedAt !== null);
+                return (
+                  <li key={f.id} className="space-y-2 border-b border-border pb-2 last:border-0 last:pb-0">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-medium">v{f.version} · <span className="font-mono text-xs">{f.format}</span></div>
+                        <div className="font-mono text-xs text-subtle">sha256:{f.checksum.slice(0, 16)}…</div>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-subtle">{f.status}</span>
+                        {f.approvedAt ? (
+                          <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-success">approved</span>
+                        ) : null}
+                        {f.fundedAt ? (
+                          <span
+                            className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-success font-mono"
+                            title="Date contributions landed in the plan trust account"
+                          >
+                            funded {f.fundedAt.toISOString().slice(0, 10)}
+                          </span>
+                        ) : null}
+                        <a
+                          href={`/api/contribution-files/${f.id}/download`}
+                          className="text-brand hover:underline"
+                        >
+                          Download
+                        </a>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 text-xs">
-                      <span className="text-subtle">{f.status}</span>
-                      {f.approvedAt ? (
-                        <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-success">approved</span>
-                      ) : null}
-                      <a
-                        href={`/api/contribution-files/${f.id}/download`}
-                        className="text-brand hover:underline"
-                      >
-                        Download
-                      </a>
-                    </div>
-                  </div>
-                  <FilePreview fileId={f.id} />
-                </li>
-              ))}
+                    <FilePreview fileId={f.id} />
+                    {fundingEligible ? (
+                      <RecordFundingAction
+                        fileId={f.id}
+                        payrollDate={payrollDateIso}
+                        currentFundedAt={f.fundedAt ? f.fundedAt.toISOString().slice(0, 10) : null}
+                        disabled={false}
+                      />
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           )}
           <div className="mt-4 flex flex-wrap gap-3">
