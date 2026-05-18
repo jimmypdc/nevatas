@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { listMembershipsForUser } from "@/lib/services/organizations";
 import { loadActiveImpersonation } from "@/lib/services/impersonation";
 
+import { AdminMenu } from "./admin-menu";
 import { IdleTimeoutWatcher } from "./idle-timeout-watcher";
 import { ImpersonationBanner } from "./impersonation-banner";
 import { OrgSwitcher } from "./org-switcher";
@@ -67,14 +68,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
               <Link href="/app/upload" className="hover:text-ink">Upload</Link>
               <Link href="/app/users" className="hover:text-ink">Members</Link>
               <Link href="/app/account/security" className="hover:text-ink">Security</Link>
-              {actor.permissions.has("platform.impersonate") ? (
-                <>
-                  <Link href="/app/admin/impersonate" className="hover:text-ink">Impersonate</Link>
-                  <Link href="/app/admin/health" className="hover:text-ink">Health</Link>
-                  <Link href="/app/admin/evidence" className="hover:text-ink">Evidence</Link>
-                  <Link href="/app/admin/access-reviews" className="hover:text-ink">Reviews</Link>
-                </>
-              ) : null}
+              {actor.permissions.has("platform.impersonate") ? <AdminMenu /> : null}
               <a
                 href="/help"
                 target="_blank"
