@@ -1095,7 +1095,14 @@ function AdminTools() {
             active membership with role + MFA + last login), every sponsor
             approval with its certification text and IP/UA, job queue
             health, recent impersonation sessions. Read-only; all data is
-            live from existing audit / security tables.
+            live from existing audit / security tables. Each section has a{" "}
+            <strong>Download CSV ↓</strong> link that pulls the full dataset
+            (90-day window where time-bounded). CSVs are formula-injection
+            escaped — cells starting with <Code>=</Code>, <Code>+</Code>,{" "}
+            <Code>-</Code>, <Code>@</Code>, tab, or CR are prefixed with a
+            single apostrophe so Excel / Sheets renders them as text. Each
+            download writes a <Code>data.exported</Code> audit event with
+            the export type and row count.
           </LI>
         </L>
       </div>

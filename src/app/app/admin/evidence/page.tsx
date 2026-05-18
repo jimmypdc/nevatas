@@ -247,7 +247,11 @@ export default async function EvidencePage() {
       </section>
 
       {/* Audit-log integrity */}
-      <Section title="Audit-log integrity" hint="Append-only at the DB trigger layer; UPDATE/DELETE on AuditEvent raises SQLSTATE 42501.">
+      <Section
+        title="Audit-log integrity"
+        hint="Append-only at the DB trigger layer; UPDATE/DELETE on AuditEvent raises SQLSTATE 42501. CSV export contains every audit event from the last 90 days."
+        exportType="audit-events"
+      >
         <KvTable
           rows={[
             ["Total events", totalAudit.toLocaleString()],
@@ -262,7 +266,11 @@ export default async function EvidencePage() {
       </Section>
 
       {/* Recent admin actions */}
-      <Section title="Recent admin actions" hint="Last 50 events from a curated set of high-signal actions.">
+      <Section
+        title="Recent admin actions"
+        hint="Last 50 events from a curated set of high-signal actions. CSV export covers the full 90-day window."
+        exportType="admin-actions"
+      >
         {adminEvents.length === 0 ? (
           <Empty>No admin actions recorded yet.</Empty>
         ) : (
@@ -284,7 +292,11 @@ export default async function EvidencePage() {
       </Section>
 
       {/* Authentication evidence */}
-      <Section title="Authentication evidence" hint="Login attempts grouped by outcome over the last 7 days.">
+      <Section
+        title="Authentication evidence"
+        hint="Login attempts grouped by outcome over the last 7 days. CSV export contains every login attempt over the last 90 days."
+        exportType="login-attempts"
+      >
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <KvTable
             rows={loginOutcomes7d
@@ -314,6 +326,7 @@ export default async function EvidencePage() {
       <Section
         title={`Access review (${memberships.length} active memberships)`}
         hint="Every active organization membership with role + MFA + last successful login."
+        exportType="access-review"
       >
         {memberships.length === 0 ? (
           <Empty>No active memberships.</Empty>
@@ -351,7 +364,11 @@ export default async function EvidencePage() {
       </Section>
 
       {/* Sponsor approvals */}
-      <Section title="Sponsor approvals" hint="Last 25 contribution approvals with the certification, signer, IP, and user-agent.">
+      <Section
+        title="Sponsor approvals"
+        hint="Last 25 contribution approvals with the certification, signer, IP, and user-agent. CSV export contains every approval record."
+        exportType="sponsor-approvals"
+      >
         {approvals.length === 0 ? (
           <Empty>No sponsor approvals recorded yet.</Empty>
         ) : (
@@ -409,7 +426,11 @@ export default async function EvidencePage() {
       </Section>
 
       {/* Job queue health */}
-      <Section title="Job queue health" hint="Background-job state across the whole platform.">
+      <Section
+        title="Job queue health"
+        hint="Background-job state across the whole platform."
+        exportType="background-jobs"
+      >
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <KvTable
             rows={jobStatusCounts
@@ -456,7 +477,11 @@ export default async function EvidencePage() {
       </Section>
 
       {/* Recent impersonation sessions */}
-      <Section title="Recent impersonation sessions" hint="Last 15. Active rows have no endedAt.">
+      <Section
+        title="Recent impersonation sessions"
+        hint="Last 15. Active rows have no endedAt. CSV export contains every impersonation session."
+        exportType="impersonation-sessions"
+      >
         {recentImpersonations.length === 0 ? (
           <Empty>No impersonation sessions recorded.</Empty>
         ) : (
@@ -510,12 +535,47 @@ function Tile({
   );
 }
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Section({
+  title,
+  hint,
+  exportType,
+  exportSinceIso,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  // When set, renders a "Download CSV" link that pulls the full dataset for
+  // the section (not just the in-page-truncated view).
+  exportType?:
+    | "audit-events"
+    | "admin-actions"
+    | "login-attempts"
+    | "access-review"
+    | "sponsor-approvals"
+    | "impersonation-sessions"
+    | "background-jobs";
+  exportSinceIso?: string;
+  children: React.ReactNode;
+}) {
+  const exportHref = exportType
+    ? `/api/admin/evidence/exports/${exportType}${exportSinceIso ? `?since=${encodeURIComponent(exportSinceIso)}` : ""}`
+    : null;
   return (
     <section className="space-y-3">
-      <div>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-subtle">{title}</h2>
-        {hint ? <p className="mt-0.5 text-xs text-subtle">{hint}</p> : null}
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-subtle">{title}</h2>
+          {hint ? <p className="mt-0.5 text-xs text-subtle">{hint}</p> : null}
+        </div>
+        {exportHref ? (
+          <a
+            href={exportHref}
+            className="rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-mono hover:bg-muted"
+            title="Download the full dataset as a CSV (formula-injection escaped)"
+          >
+            Download CSV ↓
+          </a>
+        ) : null}
       </div>
       {children}
     </section>
