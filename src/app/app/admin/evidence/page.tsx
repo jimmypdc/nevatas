@@ -197,6 +197,16 @@ export default async function EvidencePage() {
     take: 15,
   });
 
+  // ---------- Access reviews (recent) ----------
+  const recentReviews = await db.accessReview.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    include: {
+      organization: { select: { name: true } },
+      items: { select: { decision: true } },
+    },
+  });
+
   return (
     <div className="space-y-8">
       <header className="space-y-1">
@@ -476,6 +486,70 @@ export default async function EvidencePage() {
         </div>
       </Section>
 
+      {/* Access reviews */}
+      <Section
+        title="Access reviews (SOC 2 CC6.3)"
+        hint="Last 10 reviews across every org. Full workflow lives at /app/admin/access-reviews."
+        exportType="access-reviews"
+      >
+        {recentReviews.length === 0 ? (
+          <Empty>
+            No access reviews started yet.{" "}
+            <Link href="/app/admin/access-reviews" className="text-brand hover:underline">
+              Start one →
+            </Link>
+          </Empty>
+        ) : (
+          <Table
+            headers={["Created", "Organization", "Period", "Status", "Items", "Decisions (✓ / revoke / note / pending)", ""]}
+            rows={recentReviews.map((r) => {
+              const decided = r.items.reduce(
+                (acc, i) => {
+                  if (i.decision === "confirmed") acc.confirmed++;
+                  else if (i.decision === "revoke") acc.revoke++;
+                  else if (i.decision === "note") acc.note++;
+                  else acc.pending++;
+                  return acc;
+                },
+                { confirmed: 0, revoke: 0, note: 0, pending: 0 },
+              );
+              return [
+                <span key="c" className="font-mono text-[11px]">{r.createdAt.toISOString().slice(0, 16).replace("T", " ")}</span>,
+                r.organization.name,
+                <span key="p" className="font-mono text-[11px] text-subtle">
+                  {r.periodStart.toISOString().slice(0, 10)} → {r.periodEnd.toISOString().slice(0, 10)}
+                </span>,
+                <span
+                  key="s"
+                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                    r.status === "completed"
+                      ? "border-success/30 bg-success/10 text-success"
+                      : r.status === "cancelled"
+                        ? "border-border bg-muted text-subtle"
+                        : "border-warning/30 bg-warning/10 text-warning"
+                  }`}
+                >
+                  {r.status}
+                </span>,
+                <span key="n" className="font-mono text-xs">{r.items.length}</span>,
+                <span key="d" className="font-mono text-xs">
+                  <span className="text-success">{decided.confirmed}</span>
+                  {" / "}
+                  <span className="text-danger">{decided.revoke}</span>
+                  {" / "}
+                  <span className="text-warning">{decided.note}</span>
+                  {" / "}
+                  <span className="text-subtle">{decided.pending}</span>
+                </span>,
+                <Link key="l" href={`/app/admin/access-reviews/${r.id}`} className="text-xs text-brand hover:underline">
+                  Open →
+                </Link>,
+              ];
+            })}
+          />
+        )}
+      </Section>
+
       {/* Recent impersonation sessions */}
       <Section
         title="Recent impersonation sessions"
@@ -551,6 +625,7 @@ function Section({
     | "admin-actions"
     | "login-attempts"
     | "access-review"
+    | "access-reviews"
     | "sponsor-approvals"
     | "impersonation-sessions"
     | "background-jobs";

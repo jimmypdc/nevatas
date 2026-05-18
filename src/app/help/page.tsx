@@ -1065,7 +1065,7 @@ function AdminTools() {
     <section>
       <H id="admin" number="14" title="Admin tools" kicker="Platform Super Admin only" />
       <P>
-        Three operator pages live under <Code>/app/admin/</Code>, gated on the{" "}
+        Four operator pages live under <Code>/app/admin/</Code>, gated on the{" "}
         <Code>platform.impersonate</Code> permission (granted only to{" "}
         Platform Super Admin in the seed).
       </P>
@@ -1103,6 +1103,20 @@ function AdminTools() {
             single apostrophe so Excel / Sheets renders them as text. Each
             download writes a <Code>data.exported</Code> audit event with
             the export type and row count.
+          </LI>
+          <LI>
+            <strong>/app/admin/access-reviews</strong> — SOC 2 CC6.3
+            access-review workflow. Start a review by picking an
+            organization + period window; the system snapshots every active
+            membership at that moment and creates one decision row per
+            member. The reviewer decides each row (<Code>confirmed</Code>,{" "}
+            <Code>note</Code> with justification, or <Code>revoke</Code>{" "}
+            with justification) and signs off with an attested completion.
+            Completed reviews are immutable. &ldquo;Revoke&rdquo; is a
+            decision, not an action — actually disabling the membership is
+            a separate step so reviewers don&apos;t rush through and break
+            things. CSV export contains every review with one row per
+            decision, suitable for direct auditor handoff.
           </LI>
         </L>
       </div>

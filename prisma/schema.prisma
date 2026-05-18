@@ -188,6 +188,7 @@ model Organization {
   companies    Company[]
   auditEvents  AuditEvent[]
   invitations  Invitation[]
+  accessReviews AccessReview[]
 }
 
 model OrganizationUser {
@@ -708,6 +709,78 @@ model ApprovalRecord {
   payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id])
 
   @@index([payrollRunId, createdAt])
+}
+
+// ---------- Access review (SOC 2 CC6.3 evidence) ----------
+
+// A periodic review of every active organization membership. Created by a
+// platform admin via /app/admin/access-reviews/new with a chosen period
+// window (typically quarterly). The review captures a frozen snapshot of
+// active memberships at the moment of creation so the reviewer's decisions
+// attach to a stable list — adds/removes during the review don't change
+// what they're reviewing.
+//
+// Lifecycle:
+//   - draft       — items still pending decisions
+//   - completed   — all items decided + reviewer signed off (immutable)
+//   - cancelled   — abandoned before completion (rare; for restarts)
+//
+// On completion the AccessReview row + every AccessReviewItem is
+// effectively immutable by convention (no DB trigger; the service refuses
+// to mutate completed/cancelled rows).
+model AccessReview {
+  id              String    @id @default(cuid())
+  organizationId  String
+  periodStart     DateTime  @db.Timestamptz(3)
+  periodEnd       DateTime  @db.Timestamptz(3)
+  status          String    @default("draft") // draft | completed | cancelled
+  createdById     String
+  completedById   String?
+  completedAt     DateTime? @db.Timestamptz(3)
+  cancelledById   String?
+  cancelledAt     DateTime? @db.Timestamptz(3)
+  cancelReason    String?
+  notes           String?   // free-form reviewer note captured at completion
+  // Frozen membership snapshot at start time (count + emails + roles), so
+  // the evidence reflects what was seen at review time even if the
+  // underlying memberships changed during / after the review.
+  membershipSnapshotJson Json
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  items           AccessReviewItem[]
+
+  @@index([organizationId, createdAt])
+  @@index([status, createdAt])
+}
+
+// One row per active membership in the review's snapshot. The reviewer
+// decides each row: confirm (still appropriate), revoke (membership should
+// be removed), or note (keep but flag for follow-up). Decisions are
+// captured here and the actual revocation is performed separately —
+// reviewing and revoking are different actions that should be logged
+// separately.
+model AccessReviewItem {
+  id                 String   @id @default(cuid())
+  accessReviewId     String
+  // Snapshot fields — frozen at review-start time so the reviewer is
+  // reviewing what they saw, not a moving target.
+  organizationUserId String   // FK as-was; may dangle if membership later deleted
+  userId             String
+  userEmail          String
+  roleKey            String
+  mfaEnabled         Boolean
+  // Decision fields.
+  decision           String?  // null while pending; confirmed | revoke | note
+  decisionNote       String?
+  decidedById        String?
+  decidedAt          DateTime? @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+
+  accessReview AccessReview @relation(fields: [accessReviewId], references: [id], onDelete: Cascade)
+
+  @@index([accessReviewId])
+  @@index([accessReviewId, decision])
 }
 
 // ---------- Audit ----------

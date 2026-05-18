@@ -88,6 +88,12 @@ export const AUDIT_ACTIONS = {
   // Write-back
   writebackPerformed: "writeback.performed",
 
+  // Access review (SOC 2 CC6.3)
+  accessReviewStarted: "access_review.started",
+  accessReviewItemDecided: "access_review.item.decided",
+  accessReviewCompleted: "access_review.completed",
+  accessReviewCancelled: "access_review.cancelled",
+
   // Misc
   dataExported: "data.exported",
   adminImpersonationStarted: "admin.impersonation.started",

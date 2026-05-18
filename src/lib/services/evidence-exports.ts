@@ -14,6 +14,7 @@ export type EvidenceExportType =
   | "admin-actions"
   | "login-attempts"
   | "access-review"
+  | "access-reviews"
   | "sponsor-approvals"
   | "impersonation-sessions"
   | "background-jobs";
@@ -64,6 +65,8 @@ export async function buildEvidenceExport(
       return exportLoginAttempts(since, stamp);
     case "access-review":
       return exportAccessReview(stamp);
+    case "access-reviews":
+      return exportAccessReviews(stamp);
     case "sponsor-approvals":
       return exportSponsorApprovals(stamp);
     case "impersonation-sessions":
@@ -278,6 +281,78 @@ async function exportAccessReview(stamp: string): Promise<EvidenceExport> {
     }),
   );
   return { filename: `access-review_${stamp}.csv`, csv, rowCount: memberships.length };
+}
+
+// One row per AccessReviewItem (flattened so each line is one decision).
+// The review-level fields are duplicated on each row for spreadsheet ease.
+async function exportAccessReviews(stamp: string): Promise<EvidenceExport> {
+  const reviews = await db.accessReview.findMany({
+    orderBy: { createdAt: "desc" },
+    take: MAX_ROWS_PER_EXPORT,
+    include: {
+      organization: { select: { name: true, slug: true } },
+      items: { orderBy: { userEmail: "asc" } },
+    },
+  });
+
+  const rows: unknown[][] = [];
+  for (const r of reviews) {
+    for (const it of r.items) {
+      rows.push([
+        r.id,
+        r.organization.name,
+        r.organization.slug,
+        r.periodStart,
+        r.periodEnd,
+        r.status,
+        r.createdAt,
+        r.createdById,
+        r.completedAt,
+        r.completedById,
+        r.cancelledAt,
+        r.cancelledById,
+        r.cancelReason,
+        r.notes,
+        it.id,
+        it.userEmail,
+        it.roleKey,
+        it.mfaEnabled ? "true" : "false",
+        it.decision,
+        it.decisionNote,
+        it.decidedAt,
+        it.decidedById,
+      ]);
+    }
+  }
+
+  const csv = csvSafeFile(
+    [
+      "review_id",
+      "organization",
+      "organization_slug",
+      "period_start",
+      "period_end",
+      "status",
+      "review_created_at",
+      "review_created_by",
+      "completed_at",
+      "completed_by",
+      "cancelled_at",
+      "cancelled_by",
+      "cancel_reason",
+      "reviewer_notes",
+      "item_id",
+      "user_email",
+      "role_key",
+      "mfa_enabled",
+      "decision",
+      "decision_note",
+      "decided_at",
+      "decided_by",
+    ],
+    rows,
+  );
+  return { filename: `access-reviews_${stamp}.csv`, csv, rowCount: rows.length };
 }
 
 async function exportSponsorApprovals(stamp: string): Promise<EvidenceExport> {

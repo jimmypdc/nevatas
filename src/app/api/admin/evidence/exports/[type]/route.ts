@@ -21,6 +21,7 @@ const TypeEnum = z.enum([
   "admin-actions",
   "login-attempts",
   "access-review",
+  "access-reviews",
   "sponsor-approvals",
   "impersonation-sessions",
   "background-jobs",
