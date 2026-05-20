@@ -94,6 +94,13 @@ export const AUDIT_ACTIONS = {
   accessReviewCompleted: "access_review.completed",
   accessReviewCancelled: "access_review.cancelled",
 
+  // Incident management (SOC 2 CC7.3-CC7.5)
+  incidentOpened: "incident.opened",
+  incidentUpdated: "incident.updated",
+  incidentStatusChanged: "incident.status_changed",
+  incidentCustomerNotificationDecided: "incident.customer_notification_decided",
+  incidentClosed: "incident.closed",
+
   // Misc
   dataExported: "data.exported",
   adminImpersonationStarted: "admin.impersonation.started",

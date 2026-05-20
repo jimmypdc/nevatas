@@ -57,6 +57,7 @@ export default async function EvidencePage() {
     deadJobs,
     userMfaCounts,
     openBlockingIssues,
+    openIncidents,
     oldestAudit,
     latestAudit,
     totalAudit,
@@ -80,6 +81,7 @@ export default async function EvidencePage() {
     db.validationIssue.count({
       where: { status: "open", severity: { in: ["critical", "blocking"] } },
     }),
+    db.incident.count({ where: { status: { not: "closed" } } }),
     db.auditEvent.findFirst({ orderBy: { createdAt: "asc" }, select: { createdAt: true } }),
     db.auditEvent.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     db.auditEvent.count(),
@@ -207,6 +209,13 @@ export default async function EvidencePage() {
     },
   });
 
+  // ---------- Incidents (recent) ----------
+  const recentIncidents = await db.incident.findMany({
+    orderBy: [{ status: "asc" }, { detectedAt: "desc" }],
+    take: 10,
+    include: { organization: { select: { name: true } } },
+  });
+
   return (
     <div className="space-y-8">
       <header className="space-y-1">
@@ -253,6 +262,11 @@ export default async function EvidencePage() {
           label="Open critical / blocking"
           value={openBlockingIssues.toString()}
           tone={openBlockingIssues > 0 ? "warn" : "ok"}
+        />
+        <Tile
+          label="Open incidents"
+          value={openIncidents.toString()}
+          tone={openIncidents > 0 ? "warn" : "ok"}
         />
       </section>
 
@@ -550,6 +564,68 @@ export default async function EvidencePage() {
         )}
       </Section>
 
+      {/* Incidents */}
+      <Section
+        title="Incidents (SOC 2 CC7.3-CC7.5)"
+        hint="Last 10 incidents across every org. Full workflow lives at /app/admin/incidents."
+        exportType="incidents"
+      >
+        {recentIncidents.length === 0 ? (
+          <Empty>
+            No incidents recorded yet.{" "}
+            <Link href="/app/admin/incidents" className="text-brand hover:underline">
+              Open the first one →
+            </Link>
+          </Empty>
+        ) : (
+          <Table
+            headers={["Detected", "Type", "Severity", "Title", "Organization", "Status", "Cust. notify", ""]}
+            rows={recentIncidents.map((i) => [
+              <span key="d" className="font-mono text-[11px]">{i.detectedAt.toISOString().slice(0, 16).replace("T", " ")}</span>,
+              <span key="t" className="font-mono text-xs">{i.incidentType}</span>,
+              <span
+                key="s"
+                className={
+                  "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide " +
+                  (i.severity === "critical" || i.severity === "high"
+                    ? "border-danger/30 bg-danger/10 text-danger"
+                    : i.severity === "medium"
+                      ? "border-warning/30 bg-warning/10 text-warning"
+                      : "border-border bg-muted text-subtle")
+                }
+              >
+                {i.severity}
+              </span>,
+              <span key="ti" className="text-sm truncate max-w-[40ch] inline-block" title={i.title}>{i.title}</span>,
+              <span key="o" className="text-xs text-subtle">{i.organization?.name ?? "platform"}</span>,
+              <span
+                key="st"
+                className={
+                  "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide " +
+                  (i.status === "closed"
+                    ? "border-border bg-muted text-subtle"
+                    : i.status === "resolved"
+                      ? "border-success/30 bg-success/10 text-success"
+                      : "border-warning/30 bg-warning/10 text-warning")
+                }
+              >
+                {i.status}
+              </span>,
+              <span key="cn" className="text-xs">
+                {i.customerNotificationRequired === null
+                  ? <span className="text-subtle">undecided</span>
+                  : i.customerNotificationRequired
+                    ? <span className="text-warning">required</span>
+                    : <span className="text-subtle">not required</span>}
+              </span>,
+              <Link key="l" href={`/app/admin/incidents/${i.id}`} className="text-xs text-brand hover:underline">
+                Open →
+              </Link>,
+            ])}
+          />
+        )}
+      </Section>
+
       {/* Recent impersonation sessions */}
       <Section
         title="Recent impersonation sessions"
@@ -628,7 +704,8 @@ function Section({
     | "access-reviews"
     | "sponsor-approvals"
     | "impersonation-sessions"
-    | "background-jobs";
+    | "background-jobs"
+    | "incidents";
   exportSinceIso?: string;
   children: React.ReactNode;
 }) {

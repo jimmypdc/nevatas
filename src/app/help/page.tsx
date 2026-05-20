@@ -1065,9 +1065,10 @@ function AdminTools() {
     <section>
       <H id="admin" number="14" title="Admin tools" kicker="Platform Super Admin only" />
       <P>
-        Four operator pages live under <Code>/app/admin/</Code>, gated on the{" "}
+        Five operator pages live under <Code>/app/admin/</Code>, gated on the{" "}
         <Code>platform.impersonate</Code> permission (granted only to{" "}
-        Platform Super Admin in the seed).
+        Platform Super Admin in the seed). Surfaced via the <strong>Admin ▾</strong>{" "}
+        dropdown in the header.
       </P>
       <div className="mt-6">
         <L>
@@ -1117,6 +1118,25 @@ function AdminTools() {
             a separate step so reviewers don&apos;t rush through and break
             things. CSV export contains every review with one row per
             decision, suitable for direct auditor handoff.
+          </LI>
+          <LI>
+            <strong>/app/admin/incidents</strong> — SOC 2 CC7.3-CC7.5
+            incident management. Open an incident from{" "}
+            <strong>/app/admin/incidents/new</strong> with type
+            (<Code>security</Code> · <Code>data_integrity</Code> ·{" "}
+            <Code>integration_failure</Code> · <Code>availability</Code> ·{" "}
+            <Code>privacy</Code> · <Code>contribution_processing</Code>),
+            severity, title, description, and detection time. Lifecycle is
+            forward-only: <Code>open</Code> → <Code>contained</Code> →{" "}
+            <Code>resolved</Code> → <Code>closed</Code>. Each incident has
+            an append-only timeline of updates (notes, status changes,
+            customer-notification decisions). The customer-notification
+            decision is recorded separately from closure with its own
+            reasoning note — the UI refuses to begin closure until that
+            decision exists. Closure requires the full narrative (root
+            cause + containment + resolution); the service rejects empty
+            values. CSV export has one row per incident header for direct
+            auditor handoff.
           </LI>
         </L>
       </div>

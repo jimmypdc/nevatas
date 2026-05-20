@@ -13,6 +13,7 @@ const ADMIN_LINKS: { href: string; label: string }[] = [
   { href: "/app/admin/health", label: "Health" },
   { href: "/app/admin/evidence", label: "Evidence" },
   { href: "/app/admin/access-reviews", label: "Access reviews" },
+  { href: "/app/admin/incidents", label: "Incidents" },
 ];
 
 export function AdminMenu() {

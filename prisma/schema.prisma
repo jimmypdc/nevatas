@@ -189,6 +189,7 @@ model Organization {
   auditEvents  AuditEvent[]
   invitations  Invitation[]
   accessReviews AccessReview[]
+  incidents    Incident[]
 }
 
 model OrganizationUser {
@@ -781,6 +782,82 @@ model AccessReviewItem {
 
   @@index([accessReviewId])
   @@index([accessReviewId, decision])
+}
+
+// ---------- Incident management (SOC 2 CC7.3-CC7.5) ----------
+
+// Internal incident log. Captures security, data-integrity, integration,
+// availability, privacy, and contribution-processing incidents. Records
+// the response timeline as a separate IncidentUpdate stream so the
+// incident header captures "what is the current state" while the updates
+// preserve "how did we get here" — the audit trail an SOC 2 auditor or
+// breach notification process needs to reconstruct.
+//
+// Lifecycle: open → contained → resolved → closed. Status moves forward
+// only; reopening is a separate decision that creates a new incident
+// linked back to the original.
+//
+// organizationId is nullable: platform-wide infrastructure incidents
+// (KMS outage, DB failover, dependency vuln) belong to no specific
+// organization. Customer-impacting incidents must set it.
+model Incident {
+  id                              String    @id @default(cuid())
+  organizationId                  String?
+  companyId                       String?
+  planId                          String?
+  incidentType                    String    // security | data_integrity | integration_failure | availability | privacy | contribution_processing
+  severity                        String    // low | medium | high | critical
+  status                          String    @default("open") // open | contained | resolved | closed
+  title                           String
+  description                     String
+  detectedAt                      DateTime  @db.Timestamptz(3)
+  reportedById                    String
+  // Customer-notification decision. Captured separately from closure so
+  // the decision (and its reasoning) is auditable even if the incident
+  // turns out to be a false alarm and is closed without notification.
+  customerNotificationRequired    Boolean?  // null = not yet decided
+  customerNotificationDecidedById String?
+  customerNotificationDecidedAt   DateTime? @db.Timestamptz(3)
+  customerNotificationNotes       String?
+  // Closure fields. closeIncident enforces all four are non-empty before
+  // allowing the transition to "closed" — without them the row is not
+  // useful evidence.
+  rootCause                       String?
+  containmentActions              String?
+  resolutionActions               String?
+  closedById                      String?
+  closedAt                        DateTime? @db.Timestamptz(3)
+  createdAt                       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt                       DateTime  @updatedAt @db.Timestamptz(3)
+
+  organization                    Organization? @relation(fields: [organizationId], references: [id])
+  updates                         IncidentUpdate[]
+
+  @@index([status, severity])
+  @@index([organizationId, createdAt])
+  @@index([incidentType, createdAt])
+}
+
+// Append-only stream of updates for an incident. Each update is one of:
+//   - note            — operator-supplied comment (no state change)
+//   - status_change   — fromStatus -> toStatus transition with context
+//   - customer_notification — captures the customer-notification decision
+// Mutations to the header (rootCause, containmentActions, etc.) are
+// permitted because they're "the answer" auditors expect to see in the
+// main record; the timeline captures the path to that answer.
+model IncidentUpdate {
+  id          String   @id @default(cuid())
+  incidentId  String
+  authorId    String
+  kind        String   // note | status_change | customer_notification
+  content     String
+  fromStatus  String?  // populated for status_change
+  toStatus    String?  // populated for status_change
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  incident    Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId, createdAt])
 }
 
 // ---------- Audit ----------

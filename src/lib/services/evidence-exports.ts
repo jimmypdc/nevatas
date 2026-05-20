@@ -17,7 +17,8 @@ export type EvidenceExportType =
   | "access-reviews"
   | "sponsor-approvals"
   | "impersonation-sessions"
-  | "background-jobs";
+  | "background-jobs"
+  | "incidents";
 
 export type EvidenceExport = {
   filename: string;
@@ -73,6 +74,8 @@ export async function buildEvidenceExport(
       return exportImpersonationSessions(stamp);
     case "background-jobs":
       return exportBackgroundJobs(stamp);
+    case "incidents":
+      return exportIncidents(stamp);
   }
 }
 
@@ -436,6 +439,68 @@ async function exportImpersonationSessions(stamp: string): Promise<EvidenceExpor
     ]),
   );
   return { filename: `impersonation-sessions_${stamp}.csv`, csv, rowCount: rows.length };
+}
+
+// One row per incident header. Timeline updates are not exported — they
+// would explode the row count and auditors typically want the summary
+// view. (If they ask, we can add an updates-flattened variant.)
+async function exportIncidents(stamp: string): Promise<EvidenceExport> {
+  const rows = await db.incident.findMany({
+    orderBy: [{ status: "asc" }, { detectedAt: "desc" }],
+    take: MAX_ROWS_PER_EXPORT,
+    include: { organization: { select: { name: true, slug: true } } },
+  });
+  const csv = csvSafeFile(
+    [
+      "id",
+      "organization",
+      "organization_slug",
+      "incident_type",
+      "severity",
+      "status",
+      "title",
+      "description",
+      "detected_at",
+      "reported_by",
+      "customer_notification_required",
+      "customer_notification_decided_at",
+      "customer_notification_decided_by",
+      "customer_notification_notes",
+      "root_cause",
+      "containment_actions",
+      "resolution_actions",
+      "closed_at",
+      "closed_by",
+      "created_at",
+    ],
+    rows.map((r) => [
+      r.id,
+      r.organization?.name ?? "",
+      r.organization?.slug ?? "",
+      r.incidentType,
+      r.severity,
+      r.status,
+      r.title,
+      r.description,
+      r.detectedAt,
+      r.reportedById,
+      r.customerNotificationRequired === null
+        ? ""
+        : r.customerNotificationRequired
+          ? "true"
+          : "false",
+      r.customerNotificationDecidedAt,
+      r.customerNotificationDecidedById,
+      r.customerNotificationNotes,
+      r.rootCause,
+      r.containmentActions,
+      r.resolutionActions,
+      r.closedAt,
+      r.closedById,
+      r.createdAt,
+    ]),
+  );
+  return { filename: `incidents_${stamp}.csv`, csv, rowCount: rows.length };
 }
 
 async function exportBackgroundJobs(stamp: string): Promise<EvidenceExport> {
