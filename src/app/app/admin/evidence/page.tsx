@@ -58,6 +58,7 @@ export default async function EvidencePage() {
     userMfaCounts,
     openBlockingIssues,
     openIncidents,
+    vendorsNeedingReview,
     oldestAudit,
     latestAudit,
     totalAudit,
@@ -82,6 +83,15 @@ export default async function EvidencePage() {
       where: { status: "open", severity: { in: ["critical", "blocking"] } },
     }),
     db.incident.count({ where: { status: { not: "closed" } } }),
+    db.vendor.count({
+      where: {
+        status: "active",
+        OR: [
+          { nextReviewDueAt: null }, // never reviewed
+          { nextReviewDueAt: { lte: now } }, // overdue
+        ],
+      },
+    }),
     db.auditEvent.findFirst({ orderBy: { createdAt: "asc" }, select: { createdAt: true } }),
     db.auditEvent.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     db.auditEvent.count(),
@@ -216,6 +226,17 @@ export default async function EvidencePage() {
     include: { organization: { select: { name: true } } },
   });
 
+  // ---------- Vendors needing review ----------
+  const reviewSoonAt = new Date(now.getTime() + 14 * 86400_000);
+  const vendorRows = await db.vendor.findMany({
+    where: { status: "active" },
+    orderBy: [
+      { nextReviewDueAt: { sort: "asc", nulls: "first" } },
+      { criticality: "desc" },
+    ],
+    take: 20,
+  });
+
   return (
     <div className="space-y-8">
       <header className="space-y-1">
@@ -267,6 +288,11 @@ export default async function EvidencePage() {
           label="Open incidents"
           value={openIncidents.toString()}
           tone={openIncidents > 0 ? "warn" : "ok"}
+        />
+        <Tile
+          label="Vendors needing review"
+          value={vendorsNeedingReview.toString()}
+          tone={vendorsNeedingReview > 0 ? "warn" : "ok"}
         />
       </section>
 
@@ -626,6 +652,75 @@ export default async function EvidencePage() {
         )}
       </Section>
 
+      {/* Vendor risk register */}
+      <Section
+        title="Vendor risk register (SOC 2 CC9.2)"
+        hint="Active vendors ordered by review urgency. Full register lives at /app/admin/vendors."
+        exportType="vendors"
+      >
+        {vendorRows.length === 0 ? (
+          <Empty>
+            No vendors recorded yet.{" "}
+            <Link href="/app/admin/vendors" className="text-brand hover:underline">
+              Add the first one →
+            </Link>
+          </Empty>
+        ) : (
+          <Table
+            headers={["Name", "Category", "Criticality", "Last reviewed", "Next due", ""]}
+            rows={vendorRows.map((v) => {
+              const dueState = !v.nextReviewDueAt
+                ? "never"
+                : v.nextReviewDueAt <= now
+                  ? "overdue"
+                  : v.nextReviewDueAt <= reviewSoonAt
+                    ? "due-soon"
+                    : "healthy";
+              return [
+                <div key="n">
+                  <span className="font-medium">{v.name}</span>
+                  <div className="text-[11px] text-subtle truncate max-w-[32ch]">{v.description}</div>
+                </div>,
+                <span key="c" className="font-mono text-xs">{v.category}</span>,
+                <span
+                  key="cr"
+                  className={
+                    "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide " +
+                    (v.criticality === "critical" || v.criticality === "high"
+                      ? "border-danger/30 bg-danger/10 text-danger"
+                      : v.criticality === "medium"
+                        ? "border-warning/30 bg-warning/10 text-warning"
+                        : "border-border bg-muted text-subtle")
+                  }
+                >
+                  {v.criticality}
+                </span>,
+                <span key="l" className="font-mono text-[11px]">
+                  {v.lastReviewedAt ? v.lastReviewedAt.toISOString().slice(0, 10) : <em>never</em>}
+                </span>,
+                <span
+                  key="d"
+                  className={
+                    "font-mono text-[11px] " +
+                    (dueState === "overdue"
+                      ? "text-danger"
+                      : dueState === "due-soon" || dueState === "never"
+                        ? "text-warning"
+                        : "text-subtle")
+                  }
+                >
+                  {v.nextReviewDueAt ? v.nextReviewDueAt.toISOString().slice(0, 10) : "—"}
+                  {dueState === "overdue" ? " (overdue)" : dueState === "due-soon" ? " (soon)" : ""}
+                </span>,
+                <Link key="link" href={`/app/admin/vendors/${v.id}`} className="text-xs text-brand hover:underline">
+                  Open →
+                </Link>,
+              ];
+            })}
+          />
+        )}
+      </Section>
+
       {/* Recent impersonation sessions */}
       <Section
         title="Recent impersonation sessions"
@@ -705,7 +800,8 @@ function Section({
     | "sponsor-approvals"
     | "impersonation-sessions"
     | "background-jobs"
-    | "incidents";
+    | "incidents"
+    | "vendors";
   exportSinceIso?: string;
   children: React.ReactNode;
 }) {

@@ -18,7 +18,8 @@ export type EvidenceExportType =
   | "sponsor-approvals"
   | "impersonation-sessions"
   | "background-jobs"
-  | "incidents";
+  | "incidents"
+  | "vendors";
 
 export type EvidenceExport = {
   filename: string;
@@ -76,6 +77,8 @@ export async function buildEvidenceExport(
       return exportBackgroundJobs(stamp);
     case "incidents":
       return exportIncidents(stamp);
+    case "vendors":
+      return exportVendors(stamp);
   }
 }
 
@@ -501,6 +504,56 @@ async function exportIncidents(stamp: string): Promise<EvidenceExport> {
     ]),
   );
   return { filename: `incidents_${stamp}.csv`, csv, rowCount: rows.length };
+}
+
+async function exportVendors(stamp: string): Promise<EvidenceExport> {
+  const rows = await db.vendor.findMany({
+    orderBy: [{ status: "asc" }, { criticality: "desc" }, { name: "asc" }],
+    take: MAX_ROWS_PER_EXPORT,
+  });
+  const csv = csvSafeFile(
+    [
+      "id",
+      "name",
+      "description",
+      "category",
+      "criticality",
+      "data_categories",
+      "dpa_url",
+      "website_url",
+      "contact_email",
+      "status",
+      "last_reviewed_at",
+      "last_reviewed_by",
+      "next_review_due_at",
+      "retired_at",
+      "retired_by",
+      "retirement_reason",
+      "notes",
+      "created_at",
+    ],
+    rows.map((r) => [
+      r.id,
+      r.name,
+      r.description,
+      r.category,
+      r.criticality,
+      Array.isArray(r.dataCategoriesJson) ? (r.dataCategoriesJson as string[]).join("; ") : "",
+      r.dpaUrl,
+      r.websiteUrl,
+      r.contactEmail,
+      r.status,
+      r.lastReviewedAt,
+      r.lastReviewedById,
+      r.nextReviewDueAt,
+      r.retiredAt,
+      r.retiredById,
+      r.retirementReason,
+      r.notes,
+      r.createdAt,
+    ]),
+  );
+  return { filename: `vendors_${stamp}.csv`, csv, rowCount: rows.length };
 }
 
 async function exportBackgroundJobs(stamp: string): Promise<EvidenceExport> {

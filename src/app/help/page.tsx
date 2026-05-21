@@ -1065,7 +1065,7 @@ function AdminTools() {
     <section>
       <H id="admin" number="14" title="Admin tools" kicker="Platform Super Admin only" />
       <P>
-        Five operator pages live under <Code>/app/admin/</Code>, gated on the{" "}
+        Six operator pages live under <Code>/app/admin/</Code>, gated on the{" "}
         <Code>platform.impersonate</Code> permission (granted only to{" "}
         Platform Super Admin in the seed). Surfaced via the <strong>Admin ▾</strong>{" "}
         dropdown in the header.
@@ -1118,6 +1118,23 @@ function AdminTools() {
             a separate step so reviewers don&apos;t rush through and break
             things. CSV export contains every review with one row per
             decision, suitable for direct auditor handoff.
+          </LI>
+          <LI>
+            <strong>/app/admin/vendors</strong> — SOC 2 CC9.2 third-party /
+            subprocessor inventory. Each vendor row carries name, category,
+            criticality, data categories handled, DPA URL, website, contact
+            email, review history, and status (active / retired). Review
+            cadence is derived from criticality:{" "}
+            <Code>critical</Code> = 90 days, <Code>high</Code> = 180 days,{" "}
+            <Code>medium</Code> = 365 days, <Code>low</Code> = 730 days. A
+            traffic-light dot per row shows{" "}
+            <span className="text-success">healthy</span> /{" "}
+            <span className="text-warning">due-soon</span> /{" "}
+            <span className="text-danger">overdue</span> /{" "}
+            <span className="text-warning">never-reviewed</span>. Review
+            notes land in the audit log keyed by vendor id, which becomes
+            the review-history evidence trail. Retired vendors stay in the
+            register (audit history) but drop out of review-due counts.
           </LI>
           <LI>
             <strong>/app/admin/incidents</strong> — SOC 2 CC7.3-CC7.5

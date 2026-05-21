@@ -14,6 +14,7 @@ const ADMIN_LINKS: { href: string; label: string }[] = [
   { href: "/app/admin/evidence", label: "Evidence" },
   { href: "/app/admin/access-reviews", label: "Access reviews" },
   { href: "/app/admin/incidents", label: "Incidents" },
+  { href: "/app/admin/vendors", label: "Vendors" },
 ];
 
 export function AdminMenu() {

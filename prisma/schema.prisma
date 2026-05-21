@@ -860,6 +860,50 @@ model IncidentUpdate {
   @@index([incidentId, createdAt])
 }
 
+// ---------- Vendor risk register (SOC 2 CC9.2) ----------
+
+// Third-party subprocessor / vendor inventory. Each row captures who
+// the vendor is, what they do for us, what data they touch, and when we
+// last reviewed our relationship with them. Review cadence is driven by
+// criticality — recordVendorReview() computes nextReviewDueAt from a
+// criticality → cadence table in the service.
+//
+// Audit history (create, update, review, retire) lives in AuditEvent;
+// no separate vendor-review history table because the audit log already
+// captures what we'd put there. If a customer asks for a richer change
+// log we can add VendorReview rows later.
+model Vendor {
+  id                String    @id @default(cuid())
+  name              String
+  description       String
+  category          String    // infrastructure | security | communications | analytics | payments | other
+  criticality       String    // low | medium | high | critical
+  // String[] stored as JSON (Postgres has native arrays but Prisma JSON is
+  // simpler here and the data is for display, not query). e.g.
+  // ["ssn", "compensation", "tokens", "oauth_refresh"].
+  dataCategoriesJson Json
+  dpaUrl            String?
+  websiteUrl        String?
+  contactEmail      String?
+  notes             String?
+  status            String    @default("active") // active | retired
+  lastReviewedAt    DateTime? @db.Timestamptz(3)
+  lastReviewedById  String?
+  // Computed at review time from criticality cadence. Null while the
+  // vendor has never been reviewed.
+  nextReviewDueAt   DateTime? @db.Timestamptz(3)
+  retiredAt         DateTime? @db.Timestamptz(3)
+  retiredById       String?
+  retirementReason  String?
+  createdById       String
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@unique([name])
+  @@index([status, nextReviewDueAt])
+  @@index([category, criticality])
+}
+
 // ---------- Audit ----------
 
 // Append-only. Application code must never UPDATE or DELETE rows here.

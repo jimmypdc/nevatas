@@ -101,6 +101,12 @@ export const AUDIT_ACTIONS = {
   incidentCustomerNotificationDecided: "incident.customer_notification_decided",
   incidentClosed: "incident.closed",
 
+  // Vendor risk register (SOC 2 CC9.2)
+  vendorCreated: "vendor.created",
+  vendorUpdated: "vendor.updated",
+  vendorReviewed: "vendor.reviewed",
+  vendorRetired: "vendor.retired",
+
   // Misc
   dataExported: "data.exported",
   adminImpersonationStarted: "admin.impersonation.started",
