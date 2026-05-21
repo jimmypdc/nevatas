@@ -19,7 +19,8 @@ export type EvidenceExportType =
   | "impersonation-sessions"
   | "background-jobs"
   | "incidents"
-  | "vendors";
+  | "vendors"
+  | "backup-verifications";
 
 export type EvidenceExport = {
   filename: string;
@@ -79,6 +80,8 @@ export async function buildEvidenceExport(
       return exportIncidents(stamp);
     case "vendors":
       return exportVendors(stamp);
+    case "backup-verifications":
+      return exportBackupVerifications(since, stamp);
   }
 }
 
@@ -554,6 +557,45 @@ async function exportVendors(stamp: string): Promise<EvidenceExport> {
     ]),
   );
   return { filename: `vendors_${stamp}.csv`, csv, rowCount: rows.length };
+}
+
+async function exportBackupVerifications(since: Date, stamp: string): Promise<EvidenceExport> {
+  const rows = await db.backupVerification.findMany({
+    where: { reportedAt: { gte: since } },
+    orderBy: [{ source: "asc" }, { reportedAt: "desc" }],
+    take: MAX_ROWS_PER_EXPORT,
+  });
+  const csv = csvSafeFile(
+    [
+      "id",
+      "source",
+      "status",
+      "reported_at",
+      "size_bytes",
+      "duration_ms",
+      "error_message",
+      "notes",
+      "created_at",
+    ],
+    rows.map((r) => [
+      r.id,
+      r.source,
+      r.status,
+      r.reportedAt,
+      // BigInt won't JSON-serialize in many spreadsheets; format as plain
+      // decimal string so the column stays numeric.
+      r.sizeBytes === null ? "" : r.sizeBytes.toString(),
+      r.durationMs,
+      r.errorMessage,
+      r.notes,
+      r.createdAt,
+    ]),
+  );
+  return {
+    filename: `backup-verifications_since-${since.toISOString().slice(0, 10)}_${stamp}.csv`,
+    csv,
+    rowCount: rows.length,
+  };
 }
 
 async function exportBackgroundJobs(stamp: string): Promise<EvidenceExport> {

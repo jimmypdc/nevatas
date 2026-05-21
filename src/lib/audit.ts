@@ -107,6 +107,9 @@ export const AUDIT_ACTIONS = {
   vendorReviewed: "vendor.reviewed",
   vendorRetired: "vendor.retired",
 
+  // Backup verification (SOC 2 A1.2)
+  backupVerificationRecorded: "backup.verification.recorded",
+
   // Misc
   dataExported: "data.exported",
   adminImpersonationStarted: "admin.impersonation.started",

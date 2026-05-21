@@ -1120,6 +1120,24 @@ function AdminTools() {
             decision, suitable for direct auditor handoff.
           </LI>
           <LI>
+            <strong>Backup verification (SOC 2 A1.2)</strong> — passive
+            ingest, not a separate page. The backup pipeline (cron, CI,
+            whatever runs the actual backups) POSTs to{" "}
+            <Code>/api/admin/backup-verifications</Code> with{" "}
+            <Code>authorization: Bearer $BACKUP_REPORT_SECRET</Code> and a
+            JSON body{" "}
+            <Code>{`{ source, status, sizeBytes?, durationMs?, errorMessage?, reportedAt? }`}</Code>.
+            Configure expected sources via{" "}
+            <Code>BACKUP_EXPECTED_SOURCES</Code> (comma-separated). The
+            evidence center compares latest-per-source against the expected
+            list and flags <span className="text-warning">stale</span>{" "}
+            (no report in 24h), <span className="text-danger">failed</span>{" "}
+            (latest report was a failure), or{" "}
+            <span className="text-warning">never</span> (expected but no row
+            yet). When <Code>BACKUP_REPORT_SECRET</Code> is unset the
+            ingest endpoint refuses every request — default-deny.
+          </LI>
+          <LI>
             <strong>/app/admin/vendors</strong> — SOC 2 CC9.2 third-party /
             subprocessor inventory. Each vendor row carries name, category,
             criticality, data categories handled, DPA URL, website, contact

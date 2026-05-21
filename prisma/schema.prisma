@@ -904,6 +904,38 @@ model Vendor {
   @@index([category, criticality])
 }
 
+// ---------- Backup verification (SOC 2 A1.2) ----------
+
+// One row per backup-pipeline ping. The pipeline (cron, CI, or whatever
+// runs the actual backup) POSTs to /api/admin/backup-verifications after
+// every run with status=success|failure, optional size + duration, and
+// any error context. The evidence center compares latest-per-source to
+// configured expectations (BACKUP_EXPECTED_SOURCES env) and shows red
+// when a source hasn't pinged in 24h or its latest verification failed.
+//
+// Append-only by convention; the service doesn't expose update/delete.
+model BackupVerification {
+  id           String   @id @default(cuid())
+  // Identifier for the backup pipeline. Free-form so the operator can use
+  // whatever names match their infrastructure ("primary-db", "rds-snapshot",
+  // "object-storage", "audit-archive", etc.). Compared against
+  // BACKUP_EXPECTED_SOURCES for the missing-ping detection.
+  source       String
+  status       String   // success | failure
+  sizeBytes    BigInt?  // size of the backup artifact, when measurable
+  durationMs   Int?     // how long the backup run took
+  errorMessage String?  // populated on failure
+  notes        String?
+  metadataJson Json?    // arbitrary additional info from the pipeline
+  // When the pipeline reports the verification happened. May differ from
+  // createdAt if the pipeline batches or retries delivery.
+  reportedAt   DateTime @default(now()) @db.Timestamptz(3)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([source, reportedAt])
+  @@index([status, reportedAt])
+}
+
 // ---------- Audit ----------
 
 // Append-only. Application code must never UPDATE or DELETE rows here.

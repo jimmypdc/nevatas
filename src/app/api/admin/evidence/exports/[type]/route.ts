@@ -27,6 +27,7 @@ const TypeEnum = z.enum([
   "background-jobs",
   "incidents",
   "vendors",
+  "backup-verifications",
 ]);
 
 export async function GET(

@@ -13,6 +13,7 @@ import Link from "next/link";
 
 import { db } from "@/lib/db";
 import { forbidden } from "@/lib/errors";
+import { getLatestBackupStatuses } from "@/lib/services/backup-verification";
 import { requireActor } from "@/lib/session";
 
 // Action keys treated as high-signal admin activity in the "Recent admin
@@ -237,6 +238,10 @@ export default async function EvidencePage() {
     take: 20,
   });
 
+  // ---------- Backup verification ----------
+  const backupStatuses = await getLatestBackupStatuses();
+  const backupUnhealthyCount = backupStatuses.filter((b) => b.health !== "healthy").length;
+
   return (
     <div className="space-y-8">
       <header className="space-y-1">
@@ -293,6 +298,20 @@ export default async function EvidencePage() {
           label="Vendors needing review"
           value={vendorsNeedingReview.toString()}
           tone={vendorsNeedingReview > 0 ? "warn" : "ok"}
+        />
+        <Tile
+          label="Backup sources unhealthy"
+          value={
+            backupStatuses.length === 0
+              ? "—"
+              : backupUnhealthyCount.toString()
+          }
+          sub={
+            backupStatuses.length === 0
+              ? "no sources reporting"
+              : `${backupStatuses.length} total`
+          }
+          tone={backupUnhealthyCount > 0 ? "warn" : "ok"}
         />
       </section>
 
@@ -721,6 +740,68 @@ export default async function EvidencePage() {
         )}
       </Section>
 
+      {/* Backup verification */}
+      <Section
+        title="Backup verification (SOC 2 A1.2)"
+        hint={
+          backupStatuses.length === 0
+            ? "No backup pipeline has reported yet. POST to /api/admin/backup-verifications with Bearer BACKUP_REPORT_SECRET to start populating this."
+            : "Latest verification per source. Stale = no report in 24h. Configure expected sources via BACKUP_EXPECTED_SOURCES env to catch silent pipeline failures."
+        }
+        exportType="backup-verifications"
+      >
+        {backupStatuses.length === 0 ? (
+          <Empty>No backup verifications recorded.</Empty>
+        ) : (
+          <Table
+            headers={["Source", "Latest status", "Reported", "Size", "Duration", "Health", "Notes"]}
+            rows={backupStatuses.map((b) => [
+              <span key="s" className="font-mono text-xs">
+                {b.source}
+                {b.expected ? null : <span className="ml-2 text-[10px] text-subtle">(unexpected)</span>}
+              </span>,
+              b.latest ? (
+                <span
+                  key="st"
+                  className={
+                    "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide " +
+                    (b.latest.status === "success"
+                      ? "border-success/30 bg-success/10 text-success"
+                      : "border-danger/30 bg-danger/10 text-danger")
+                  }
+                >
+                  {b.latest.status}
+                </span>
+              ) : (
+                <span key="st" className="text-xs text-subtle">never</span>
+              ),
+              <span key="r" className="font-mono text-[11px] text-subtle">
+                {b.latest ? b.latest.reportedAt.toISOString().slice(0, 16).replace("T", " ") : "—"}
+              </span>,
+              <span key="sz" className="font-mono text-[11px] text-subtle">
+                {b.latest?.sizeBytes ? formatBytes(b.latest.sizeBytes) : "—"}
+              </span>,
+              <span key="d" className="font-mono text-[11px] text-subtle">
+                {b.latest?.durationMs ? formatDuration(b.latest.durationMs) : "—"}
+              </span>,
+              <span key="h" className={
+                "text-xs font-mono " +
+                (b.health === "healthy"
+                  ? "text-success"
+                  : b.health === "stale"
+                    ? "text-warning"
+                    : "text-danger")
+              }>
+                {b.health}
+              </span>,
+              <span key="n" className="text-[11px] text-subtle truncate max-w-[40ch] inline-block" title={b.latest?.errorMessage ?? ""}>
+                {b.latest?.errorMessage ?? ""}
+              </span>,
+            ])}
+          />
+        )}
+      </Section>
+
       {/* Recent impersonation sessions */}
       <Section
         title="Recent impersonation sessions"
@@ -801,7 +882,8 @@ function Section({
     | "impersonation-sessions"
     | "background-jobs"
     | "incidents"
-    | "vendors";
+    | "vendors"
+    | "backup-verifications";
   exportSinceIso?: string;
   children: React.ReactNode;
 }) {
@@ -883,4 +965,27 @@ function Empty({ children }: { children: React.ReactNode }) {
 function shortId(id: string | null | undefined): string {
   if (!id) return "—";
   return `${id.slice(0, 10)}…`;
+}
+
+function formatBytes(n: bigint): string {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return String(n);
+  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+  let v = num;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms} ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(s < 10 ? 1 : 0)} s`;
+  const m = s / 60;
+  if (m < 60) return `${m.toFixed(m < 10 ? 1 : 0)} min`;
+  const h = m / 60;
+  return `${h.toFixed(1)} h`;
 }

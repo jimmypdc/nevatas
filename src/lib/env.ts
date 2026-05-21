@@ -50,6 +50,17 @@ const EnvSchema = z.object({
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
   S3_ENDPOINT: z.string().optional(),
+
+  // Backup verification ingest. The backup pipeline (cron, CI, whatever
+  // runs the actual backups) POSTs to /api/admin/backup-verifications
+  // with Bearer <BACKUP_REPORT_SECRET>. Compared with timingSafeEqual.
+  // Optional: when unset, the ingest endpoint refuses every request.
+  BACKUP_REPORT_SECRET: z.string().min(16).optional(),
+  // Comma-separated list of source identifiers the operator expects to
+  // see daily verifications for. Drives the missing-ping detection on
+  // the evidence center. Empty / unset = no expectations; the dashboard
+  // simply shows whatever has reported.
+  BACKUP_EXPECTED_SOURCES: z.string().default(""),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
