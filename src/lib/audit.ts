@@ -85,7 +85,15 @@ export const AUDIT_ACTIONS = {
   correctionCycleClosed: "correction_cycle.closed",
   correctionCycleAbandoned: "correction_cycle.abandoned",
 
-  // Write-back
+  // Write-back (Phase 4)
+  writebackRequestCreated: "writeback.request.created",
+  writebackRequestApproved: "writeback.request.approved",
+  writebackRequestCancelled: "writeback.request.cancelled",
+  writebackRequestSubmitted: "writeback.request.submitted",
+  writebackRequestSucceeded: "writeback.request.succeeded",
+  writebackRequestFailed: "writeback.request.failed",
+  // Legacy alias kept for any existing rows in the audit log; new code
+  // should use the more granular events above.
   writebackPerformed: "writeback.performed",
 
   // Access review (SOC 2 CC6.3)

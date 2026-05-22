@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { requireActor } from "@/lib/session";
 
 import { ConnectionActions } from "./_components/connection-actions";
+import { WritebacksSection } from "./_components/writebacks-section";
 
 const ALL_PROVIDERS: { key: string; name: string; phase: string }[] = [
   { key: "paycor", name: "Paycor", phase: "ready" },
@@ -45,11 +46,39 @@ export default async function ConnectionsPage({
 
   const canManage = actor.permissions.has("payroll_connection.create");
   const canSync = actor.permissions.has("payroll_sync.run");
+  const canCreateWriteback = actor.permissions.has("payroll_sync.run");
+  const canApproveWriteback = actor.permissions.has("contribution.submit");
 
   // Connections grouped by status for display.
   const active = connections.filter((c) => c.status === "active");
   const inactive = connections.filter((c) => c.status !== "active");
   const connectedProviders = new Set(active.map((c) => c.provider));
+
+  // Writebacks across active connections for this company. Drafts +
+  // recent terminal rows; the table sorts to put non-terminal first.
+  const writebacks =
+    active.length === 0
+      ? []
+      : await db.writebackRequest.findMany({
+          where: { payrollConnectionId: { in: active.map((c) => c.id) } },
+          orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+          take: 25,
+          include: {
+            participant: { select: { firstName: true, lastName: true, externalEmployeeId: true } },
+          },
+        });
+
+  // Participants for the "new writeback" picker — only ones with an
+  // externalEmployeeId (otherwise we can't route the writeback to the
+  // provider).
+  const participants =
+    active.length === 0
+      ? []
+      : await db.participant.findMany({
+          where: { companyId: company.id, externalEmployeeId: { not: null }, status: "active" },
+          select: { id: true, firstName: true, lastName: true, externalEmployeeId: true },
+          orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+        });
 
   return (
     <div className="space-y-8">
@@ -167,6 +196,33 @@ export default async function ConnectionsPage({
             })}
           </div>
         </section>
+      ) : null}
+
+      {/* Provider write-backs (Phase 4) */}
+      {active.length > 0 ? (
+        <WritebacksSection
+          activeConnections={active.map((c) => ({ id: c.id, provider: c.provider }))}
+          participants={participants.map((p) => ({
+            id: p.id,
+            externalEmployeeId: p.externalEmployeeId ?? "",
+            displayName: `${p.firstName} ${p.lastName}`,
+          }))}
+          writebacks={writebacks.map((w) => ({
+            id: w.id,
+            createdAt: w.createdAt.toISOString(),
+            requestType: w.requestType,
+            status: w.status,
+            participantName: `${w.participant.firstName} ${w.participant.lastName}`,
+            participantExternalId: w.participant.externalEmployeeId ?? "",
+            payload: w.payloadJson as Record<string, unknown>,
+            errorMessage: w.errorMessage,
+            attempts: w.attempts,
+            maxAttempts: w.maxAttempts,
+            providerConfirmationId: w.providerConfirmationId,
+          }))}
+          canCreate={canCreateWriteback}
+          canApprove={canApproveWriteback}
+        />
       ) : null}
 
       {/* Past inactive connections — kept for audit trail */}

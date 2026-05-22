@@ -306,6 +306,7 @@ model Participant {
   company       Company               @relation(fields: [companyId], references: [id])
   contributions PayrollContribution[]
   loanSchedules LoanSchedule[]
+  writebackRequests WritebackRequest[]
 
   @@unique([companyId, externalEmployeeId])
   @@index([companyId, lastName])
@@ -344,7 +345,8 @@ model PayrollConnection {
   createdAt       DateTime @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime @updatedAt @db.Timestamptz(3)
 
-  company Company @relation(fields: [companyId], references: [id])
+  company           Company            @relation(fields: [companyId], references: [id])
+  writebackRequests WritebackRequest[]
 
   @@index([companyId, provider])
 }
@@ -999,6 +1001,80 @@ model SecurityPolicyAcknowledgment {
   @@unique([policyVersionId, userId])
   @@index([userId, createdAt])
   @@index([policyVersionId, createdAt])
+}
+
+// ---------- Write-back (Phase 4) ----------
+
+// A single request to push a change BACK to the connected payroll
+// provider (deferral election update, etc.). CLAUDE.md §8.11 invariants:
+//   - Idempotency keys: providerRequestId is the key we send to the
+//     provider; the unique constraint at the DB layer prevents
+//     duplicate submissions of the same WritebackRequest.
+//   - Pre-submit validation: the service refuses requests with
+//     inconsistent payloads (e.g. negative percent, percent + amount
+//     both set) before any provider call.
+//   - User approval: requests start in "draft" and must be explicitly
+//     approved (status=approved) before the job handler will submit.
+//   - Provider response logging: providerResponseJson captures the raw
+//     response verbatim — audit evidence the provider acknowledged.
+//   - Retry limits: maxAttempts cap + exponential backoff via the
+//     existing BackgroundJob queue.
+//   - No duplicate writebacks: a unique partial index on
+//     (payrollConnectionId, participantId, requestType) filtered to
+//     non-terminal statuses prevents two concurrent active requests
+//     for the same target.
+//
+// Lifecycle:
+//   draft → approved → in_flight → succeeded
+//                    ↘ failed (terminal after maxAttempts)
+//   draft → cancelled
+//
+// We don't model a "rolled back" terminal state in v1 — rollback would
+// be a NEW writeback that reverses the change. Simpler and matches how
+// the provider actually thinks about it.
+model WritebackRequest {
+  id                    String    @id @default(cuid())
+  organizationId        String
+  companyId             String
+  payrollConnectionId   String
+  participantId         String
+  // What we're asking the provider to change. v1 ships "deferral_election";
+  // "roth_election", "loan_repayment", and "eligibility_indicator" are
+  // schema-ready but not yet wired through the adapter handler.
+  requestType           String
+  // The desired-state payload. Shape varies by requestType.
+  // For deferral_election:
+  //   { preTaxPercent?, preTaxAmount?, rothPercent?, rothAmount?, effectiveDate }
+  payloadJson           Json
+  status                String    @default("draft") // draft | approved | in_flight | succeeded | failed | cancelled
+  // Approval is an explicit operator step. createdBy and approvedBy can
+  // be the same user in v1; two-person approval is a future toggle.
+  createdById           String
+  approvedById          String?
+  approvedAt            DateTime? @db.Timestamptz(3)
+  approvalNote          String?
+  cancelledById         String?
+  cancelledAt           DateTime? @db.Timestamptz(3)
+  cancelReason          String?
+  // Provider exchange. providerRequestId is the idempotency key we send
+  // to the provider; reusing it on retry returns the original outcome.
+  providerRequestId     String?   @unique
+  providerConfirmationId String?  // returned by the provider on success
+  providerResponseJson  Json?     // raw response (sanitized of tokens)
+  submittedAt           DateTime? @db.Timestamptz(3)
+  completedAt           DateTime? @db.Timestamptz(3)
+  errorMessage          String?
+  attempts              Int       @default(0)
+  maxAttempts           Int       @default(3)
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+
+  participant           Participant       @relation(fields: [participantId], references: [id])
+  payrollConnection     PayrollConnection @relation(fields: [payrollConnectionId], references: [id])
+
+  @@index([payrollConnectionId, status])
+  @@index([participantId, requestType])
+  @@index([status, createdAt])
 }
 
 // ---------- Audit ----------

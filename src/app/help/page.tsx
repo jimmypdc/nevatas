@@ -558,6 +558,49 @@ function PayrollIntegrations() {
         8-step wiring checklist. Swapping to live requires no changes
         outside that file.
       </Note>
+
+      <h3 className="display text-[20px] font-medium text-ink mt-10 mb-4">
+        Write-back (Phase 4)
+      </h3>
+      <P>
+        Push changes BACK to the connected payroll provider — currently
+        deferral election updates. From the company connections page, click
+        <strong> + New write-back</strong>, pick a participant + effective
+        date + pre-tax/Roth percent or amount, and submit. That creates a
+        <Code>draft</Code> row. An authorized approver clicks <strong>Approve</strong> and the
+        request enters the background queue, transitions to <Code>in_flight</Code>,
+        and on success captures the provider&apos;s confirmation id +
+        effective date.
+      </P>
+      <div className="mt-3">
+        <L>
+          <LI>
+            <strong>Idempotency</strong> — every write-back generates a
+            stable <Code>providerRequestId</Code> at approval time. Retries
+            reuse the key so the provider can dedupe on their side.
+          </LI>
+          <LI>
+            <strong>Pre-submit validation</strong> — refuses payloads with
+            conflicting percent+amount on the same source, missing
+            effective date, or implausible values. The mock Paycor adapter
+            additionally rejects <Code>EMP-999999</Code> and effective
+            dates more than 30 days in the past, so the failure path is
+            demoable.
+          </LI>
+          <LI>
+            <strong>Audit trail</strong> — five events per write-back:{" "}
+            <Code>created</Code>, <Code>approved</Code>, <Code>submitted</Code>,{" "}
+            <Code>succeeded</Code> or <Code>failed</Code> (plus{" "}
+            <Code>cancelled</Code> for drafts that never get approved).
+          </LI>
+          <LI>
+            <strong>No duplicates</strong> — at most one active write-back
+            per (connection, participant, requestType) at a time. A second
+            create attempt while one is in flight is refused with a clear
+            error.
+          </LI>
+        </L>
+      </div>
     </section>
   );
 }

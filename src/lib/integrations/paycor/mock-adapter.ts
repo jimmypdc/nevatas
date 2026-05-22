@@ -14,9 +14,11 @@ import type {
   PayrollProviderAdapter,
   ProviderCompany,
   ProviderDeduction,
+  ProviderDeferralUpdate,
   ProviderEmployee,
   ProviderPayrollRun,
   ProviderPayrollRunDetail,
+  ProviderWritebackResult,
   SyncParams,
   TokenRefreshResult,
 } from "@/lib/integrations/types";
@@ -110,5 +112,33 @@ export class PaycorMockAdapter implements PayrollProviderAdapter {
 
   async getDeductions(_connectionId: string): Promise<ProviderDeduction[]> {
     return MOCK_DEDUCTIONS.map((d) => ({ ...d }));
+  }
+
+  // Write-back: deferral election update.
+  //
+  // The mock simulates Paycor's behavior with two deterministic
+  // failure modes — useful for demoing the retry path against realistic
+  // provider errors without requiring sandbox credentials:
+  //   - externalEmployeeId === "EMP-999999" → permanent "unknown employee"
+  //   - effectiveDate older than 30 days  → permanent "back-dating not
+  //     permitted" (mirrors most providers' policy)
+  // Everything else returns a fabricated confirmation id.
+  async updateDeferralElection(
+    _connectionId: string,
+    input: ProviderDeferralUpdate,
+  ): Promise<ProviderWritebackResult> {
+    if (input.externalEmployeeId === "EMP-999999") {
+      throw new Error(`Paycor (mock): unknown employee ${input.externalEmployeeId}`);
+    }
+    const backDateCutoff = Date.now() - 30 * 86400_000;
+    if (input.effectiveDate.getTime() < backDateCutoff) {
+      throw new Error(
+        `Paycor (mock): effectiveDate ${input.effectiveDate.toISOString().slice(0, 10)} is more than 30 days in the past`,
+      );
+    }
+    return {
+      providerConfirmationId: `PAYCOR-MOCK-WB-${Date.now()}`,
+      effectiveDate: input.effectiveDate,
+    };
   }
 }

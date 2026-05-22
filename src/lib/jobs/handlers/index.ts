@@ -4,3 +4,4 @@
 import "@/lib/jobs/handlers/scan-file";
 import "@/lib/jobs/handlers/send-email";
 import "@/lib/jobs/handlers/payroll-sync";
+import "@/lib/jobs/handlers/payroll-writeback";

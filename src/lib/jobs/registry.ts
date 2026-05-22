@@ -14,8 +14,9 @@ export const JOB_TYPES = {
   scanFile: "file.scan",
   sendEmail: "email.send",
   payrollSync: "payroll.sync",
+  payrollWriteback: "payroll.writeback",
   // Future:
-  //   "validation.run", "contribution_file.generate", "writeback.deferral", ...
+  //   "validation.run", "contribution_file.generate", ...
 } as const;
 
 export type JobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES];
@@ -33,6 +34,9 @@ export const JOB_PAYLOAD_SCHEMAS = {
   [JOB_TYPES.payrollSync]: z.object({
     connectionId: z.string().min(1),
     sinceIso: z.string().nullable().optional(),
+  }),
+  [JOB_TYPES.payrollWriteback]: z.object({
+    writebackId: z.string().min(1),
   }),
 } as const;
 

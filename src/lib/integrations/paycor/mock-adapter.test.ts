@@ -141,4 +141,37 @@ describe("PaycorMockAdapter", () => {
       expect(stringified).not.toContain("password");
     }
   });
+
+  // ---------- write-back (Phase 4) ----------
+
+  it("updateDeferralElection returns a confirmation id for normal input", async () => {
+    const r = await adapter.updateDeferralElection!(CONN, {
+      externalEmployeeId: "EMP-1001",
+      effectiveDate: new Date(),
+      preTaxPercent: 6,
+    });
+    expect(r.providerConfirmationId).toMatch(/^PAYCOR-MOCK-WB-/);
+    expect(r.effectiveDate).toBeInstanceOf(Date);
+  });
+
+  it("updateDeferralElection rejects the seeded 'unknown employee' marker", async () => {
+    await expect(
+      adapter.updateDeferralElection!(CONN, {
+        externalEmployeeId: "EMP-999999",
+        effectiveDate: new Date(),
+        preTaxPercent: 4,
+      }),
+    ).rejects.toThrow(/unknown employee/i);
+  });
+
+  it("updateDeferralElection rejects back-dated effectiveDate (>30 days)", async () => {
+    const wayBack = new Date(Date.now() - 60 * 86400_000);
+    await expect(
+      adapter.updateDeferralElection!(CONN, {
+        externalEmployeeId: "EMP-1001",
+        effectiveDate: wayBack,
+        preTaxPercent: 6,
+      }),
+    ).rejects.toThrow(/back-dat|past/i);
+  });
 });
