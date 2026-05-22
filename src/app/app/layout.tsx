@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
@@ -8,6 +9,7 @@ import { getCurrentUserId, requireActor } from "@/lib/session";
 import { db } from "@/lib/db";
 import { listMembershipsForUser } from "@/lib/services/organizations";
 import { loadActiveImpersonation } from "@/lib/services/impersonation";
+import { getOutstandingPoliciesForUser } from "@/lib/services/security-policy";
 
 import { AdminMenu } from "./admin-menu";
 import { IdleTimeoutWatcher } from "./idle-timeout-watcher";
@@ -20,6 +22,20 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     actor = await requireActor();
   } catch {
     redirect("/login");
+  }
+
+  // Gate: if the user has unacknowledged active policies, force them to
+  // /app/acknowledge until the queue is empty. Self-exempts when we're
+  // already rendering that page (otherwise infinite loop). The pathname
+  // is forwarded by middleware as x-pathname since Next.js doesn't
+  // expose the current URL inside a layout.
+  const reqHeaders = await headers();
+  const currentPath = reqHeaders.get("x-pathname") ?? "";
+  if (!currentPath.startsWith("/app/acknowledge")) {
+    const outstanding = await getOutstandingPoliciesForUser(actor.userId);
+    if (outstanding.length > 0) {
+      redirect("/app/acknowledge");
+    }
   }
 
   const [user, memberships] = await Promise.all([

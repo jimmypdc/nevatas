@@ -110,6 +110,12 @@ export const AUDIT_ACTIONS = {
   // Backup verification (SOC 2 A1.2)
   backupVerificationRecorded: "backup.verification.recorded",
 
+  // Security policies (SOC 2 CC2.3)
+  securityPolicyCreated: "security_policy.created",
+  securityPolicyVersionPublished: "security_policy.version.published",
+  securityPolicyRetired: "security_policy.retired",
+  securityPolicyAcknowledged: "security_policy.acknowledged",
+
   // Misc
   dataExported: "data.exported",
   adminImpersonationStarted: "admin.impersonation.started",

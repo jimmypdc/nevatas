@@ -1065,8 +1065,8 @@ function AdminTools() {
     <section>
       <H id="admin" number="14" title="Admin tools" kicker="Platform Super Admin only" />
       <P>
-        Six operator pages live under <Code>/app/admin/</Code>, gated on the{" "}
-        <Code>platform.impersonate</Code> permission (granted only to{" "}
+        Seven operator pages live under <Code>/app/admin/</Code>, gated on
+        the <Code>platform.impersonate</Code> permission (granted only to{" "}
         Platform Super Admin in the seed). Surfaced via the <strong>Admin ▾</strong>{" "}
         dropdown in the header.
       </P>
@@ -1118,6 +1118,20 @@ function AdminTools() {
             a separate step so reviewers don&apos;t rush through and break
             things. CSV export contains every review with one row per
             decision, suitable for direct auditor handoff.
+          </LI>
+          <LI>
+            <strong>/app/admin/security-policies</strong> — SOC 2 CC2.3
+            policy distribution + acknowledgment workflow. Publish a
+            versioned policy (Markdown content + key + name); every active
+            user is gated at <Code>/app/acknowledge</Code> until they
+            acknowledge the active version. Publishing a new version
+            auto-supersedes the prior active version (in one transaction)
+            and re-prompts every user — old acknowledgments stay attached
+            to the version they were given for, so the evidence trail is
+            precise ("Alice acknowledged v2 at 2026-05-21"). Each
+            acknowledgment records user, version, timestamp, IP, and
+            user-agent. Coverage % shows per-policy on the index page;
+            CSV export contains every acknowledgment.
           </LI>
           <LI>
             <strong>Backup verification (SOC 2 A1.2)</strong> — passive

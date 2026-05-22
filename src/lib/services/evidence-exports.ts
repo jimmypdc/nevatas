@@ -20,7 +20,8 @@ export type EvidenceExportType =
   | "background-jobs"
   | "incidents"
   | "vendors"
-  | "backup-verifications";
+  | "backup-verifications"
+  | "policy-acknowledgments";
 
 export type EvidenceExport = {
   filename: string;
@@ -82,6 +83,8 @@ export async function buildEvidenceExport(
       return exportVendors(stamp);
     case "backup-verifications":
       return exportBackupVerifications(since, stamp);
+    case "policy-acknowledgments":
+      return exportPolicyAcknowledgments(stamp);
   }
 }
 
@@ -596,6 +599,58 @@ async function exportBackupVerifications(since: Date, stamp: string): Promise<Ev
     csv,
     rowCount: rows.length,
   };
+}
+
+async function exportPolicyAcknowledgments(stamp: string): Promise<EvidenceExport> {
+  const rows = await db.securityPolicyAcknowledgment.findMany({
+    orderBy: { createdAt: "desc" },
+    take: MAX_ROWS_PER_EXPORT,
+    include: {
+      policyVersion: {
+        select: {
+          version: true,
+          publishedAt: true,
+          policy: { select: { key: true, name: true } },
+        },
+      },
+    },
+  });
+
+  // Resolve user emails in one query for spreadsheet-friendly output.
+  const userIds = Array.from(new Set(rows.map((r) => r.userId)));
+  const users = await db.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, email: true },
+  });
+  const emailById = new Map(users.map((u) => [u.id, u.email]));
+
+  const csv = csvSafeFile(
+    [
+      "id",
+      "policy_key",
+      "policy_name",
+      "policy_version",
+      "version_published_at",
+      "user_id",
+      "user_email",
+      "acknowledged_at",
+      "ip_address",
+      "user_agent",
+    ],
+    rows.map((r) => [
+      r.id,
+      r.policyVersion.policy.key,
+      r.policyVersion.policy.name,
+      r.policyVersion.version,
+      r.policyVersion.publishedAt,
+      r.userId,
+      emailById.get(r.userId) ?? "",
+      r.createdAt,
+      r.ipAddress,
+      r.userAgent,
+    ]),
+  );
+  return { filename: `policy-acknowledgments_${stamp}.csv`, csv, rowCount: rows.length };
 }
 
 async function exportBackgroundJobs(stamp: string): Promise<EvidenceExport> {

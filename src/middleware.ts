@@ -74,7 +74,15 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  const res = NextResponse.next();
+  // Forward the pathname as a request header so server layouts can read
+  // it (Next.js doesn't expose the current URL inside a layout otherwise).
+  // The app layout uses this to detect when it's rendering the
+  // /app/acknowledge gate page and self-exempt from the redirect loop.
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-pathname", url.pathname);
+  requestHeaders.set("x-request-id", requestId);
+
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
   res.headers.set("x-request-id", requestId);
   return res;
 }

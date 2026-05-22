@@ -936,6 +936,71 @@ model BackupVerification {
   @@index([status, reportedAt])
 }
 
+// ---------- Security policies (SOC 2 CC2.3) ----------
+
+// A versioned policy document users acknowledge. Each iteration of the
+// text is a new SecurityPolicyVersion; existing acknowledgments stay
+// attached to the version that was active when the user signed off, so
+// the evidence trail is precise: "Alice acknowledged version 2 of
+// Acceptable Use Policy at 2026-05-21".
+//
+// Lifecycle:
+//   Policy.status        active | retired
+//   PolicyVersion.status active | superseded
+// Publishing a new version supersedes the previous active version in
+// the same transaction. Retiring a policy stops requiring further
+// acknowledgments but does not invalidate history.
+model SecurityPolicy {
+  id          String    @id @default(cuid())
+  key         String    @unique // stable identifier; appears in audit metadata
+  name        String
+  description String?
+  status      String    @default("active") // active | retired
+  retiredById String?
+  retiredAt   DateTime? @db.Timestamptz(3)
+  createdById String
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  versions    SecurityPolicyVersion[]
+
+  @@index([status])
+}
+
+model SecurityPolicyVersion {
+  id              String   @id @default(cuid())
+  policyId        String
+  version         Int      // auto-incremented per policy starting at 1
+  content         String   // markdown
+  changeSummary   String?  // what changed vs. the prior version
+  status          String   @default("active") // active | superseded
+  publishedById   String
+  publishedAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  policy          SecurityPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  acknowledgments SecurityPolicyAcknowledgment[]
+
+  @@unique([policyId, version])
+  @@index([policyId, status])
+}
+
+// One row per (user, policy version). Unique to prevent double-counting;
+// idempotent at the service layer.
+model SecurityPolicyAcknowledgment {
+  id              String   @id @default(cuid())
+  policyVersionId String
+  userId          String
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  policyVersion SecurityPolicyVersion @relation(fields: [policyVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([policyVersionId, userId])
+  @@index([userId, createdAt])
+  @@index([policyVersionId, createdAt])
+}
+
 // ---------- Audit ----------
 
 // Append-only. Application code must never UPDATE or DELETE rows here.

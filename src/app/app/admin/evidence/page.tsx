@@ -60,6 +60,7 @@ export default async function EvidencePage() {
     openBlockingIssues,
     openIncidents,
     vendorsNeedingReview,
+    outstandingPolicyAcks,
     oldestAudit,
     latestAudit,
     totalAudit,
@@ -93,6 +94,26 @@ export default async function EvidencePage() {
         ],
       },
     }),
+    // SOC 2 CC2.3 coverage: count outstanding (user, active policy version)
+    // pairs across the platform. Equals (active users) × (active versions)
+    // − recorded acknowledgments.
+    (async () => {
+      const [activeUsers, activeVersionIds] = await Promise.all([
+        db.user.findMany({ where: { status: "active" }, select: { id: true } }),
+        db.securityPolicyVersion.findMany({
+          where: { status: "active", policy: { status: "active" } },
+          select: { id: true },
+        }),
+      ]);
+      if (activeUsers.length === 0 || activeVersionIds.length === 0) return 0;
+      const acks = await db.securityPolicyAcknowledgment.count({
+        where: {
+          userId: { in: activeUsers.map((u) => u.id) },
+          policyVersionId: { in: activeVersionIds.map((v) => v.id) },
+        },
+      });
+      return activeUsers.length * activeVersionIds.length - acks;
+    })(),
     db.auditEvent.findFirst({ orderBy: { createdAt: "asc" }, select: { createdAt: true } }),
     db.auditEvent.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     db.auditEvent.count(),
@@ -242,6 +263,20 @@ export default async function EvidencePage() {
   const backupStatuses = await getLatestBackupStatuses();
   const backupUnhealthyCount = backupStatuses.filter((b) => b.health !== "healthy").length;
 
+  // ---------- Security policy coverage ----------
+  const totalActiveUsersForCoverage = await db.user.count({ where: { status: "active" } });
+  const policyCoverage = await db.securityPolicy.findMany({
+    where: { status: "active" },
+    include: {
+      versions: {
+        where: { status: "active" },
+        include: { _count: { select: { acknowledgments: true } } },
+        take: 1,
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+
   return (
     <div className="space-y-8">
       <header className="space-y-1">
@@ -312,6 +347,11 @@ export default async function EvidencePage() {
               : `${backupStatuses.length} total`
           }
           tone={backupUnhealthyCount > 0 ? "warn" : "ok"}
+        />
+        <Tile
+          label="Outstanding policy acks"
+          value={outstandingPolicyAcks.toString()}
+          tone={outstandingPolicyAcks > 0 ? "warn" : "ok"}
         />
       </section>
 
@@ -740,6 +780,56 @@ export default async function EvidencePage() {
         )}
       </Section>
 
+      {/* Security policy coverage */}
+      <Section
+        title="Security policy coverage (SOC 2 CC2.3)"
+        hint="Per-policy acknowledgment coverage across active users. CSV export contains every acknowledgment with IP + UA."
+        exportType="policy-acknowledgments"
+      >
+        {policyCoverage.length === 0 ? (
+          <Empty>
+            No active policies.{" "}
+            <Link href="/app/admin/security-policies" className="text-brand hover:underline">
+              Publish one →
+            </Link>
+          </Empty>
+        ) : (
+          <Table
+            headers={["Key", "Name", "Active version", "Acknowledgments", "Coverage", ""]}
+            rows={policyCoverage.map((p) => {
+              const v = p.versions[0];
+              const acks = v?._count.acknowledgments ?? 0;
+              const pct =
+                totalActiveUsersForCoverage === 0
+                  ? 0
+                  : Math.round((acks / totalActiveUsersForCoverage) * 100);
+              return [
+                <span key="k" className="font-mono text-xs">{p.key}</span>,
+                p.name,
+                <span key="v" className="font-mono text-xs">{v ? `v${v.version}` : "—"}</span>,
+                <span key="a" className="font-mono text-xs">{acks} / {totalActiveUsersForCoverage}</span>,
+                <span
+                  key="c"
+                  className={
+                    "font-mono text-xs " +
+                    (pct === 100
+                      ? "text-success"
+                      : pct > 0
+                        ? "text-warning"
+                        : "text-danger")
+                  }
+                >
+                  {pct}%
+                </span>,
+                <Link key="l" href={`/app/admin/security-policies/${p.id}`} className="text-xs text-brand hover:underline">
+                  Open →
+                </Link>,
+              ];
+            })}
+          />
+        )}
+      </Section>
+
       {/* Backup verification */}
       <Section
         title="Backup verification (SOC 2 A1.2)"
@@ -883,7 +973,8 @@ function Section({
     | "background-jobs"
     | "incidents"
     | "vendors"
-    | "backup-verifications";
+    | "backup-verifications"
+    | "policy-acknowledgments";
   exportSinceIso?: string;
   children: React.ReactNode;
 }) {
